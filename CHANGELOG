@@ -1,9 +1,10 @@
 5/11/2025
     Mirrored the GitLab repo onto my GitHub repo to get the CI/CD configuration working 
-    (GitLab did not have the permissions needed)
+    (GitLab did not have the permissions needed).
 
-    Deployed the app via React + Vite
+    Deployed the app via React + Vite.
 
-    Coding out the skeleton for the app as a base
+    Coding out the skeleton for the app as a base.
 
+    Added sql.js to run the SQL queries in the browser itself. 
 
