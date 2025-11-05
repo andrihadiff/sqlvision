@@ -1,0 +1,9 @@
+5/11/2025
+    Mirrored the GitLab repo onto my GitHub repo to get the CI/CD configuration working 
+    (GitLab did not have the permissions needed)
+
+    Deployed the app via React + Vite
+
+    Coding out the skeleton for the app as a base
+
+
