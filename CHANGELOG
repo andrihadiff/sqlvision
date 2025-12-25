@@ -1,6 +1,6 @@
 5/11/2025
     Mirrored the GitLab repo onto my GitHub repo to get the CI/CD configuration working 
-    (GitLab did not have the permissions needed).
+    (GitLab did not have the permissions needed)
 
     Deployed the app via React + Vite.
 
@@ -10,4 +10,7 @@
 
 21/12/2025
     Added the About modal to explain how the app works.
+
+25/12/2025
+    Added the Help modal to describe how to use the app.
 
