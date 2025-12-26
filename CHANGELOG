@@ -16,3 +16,7 @@
 
     Enabling the Run button but not the full function yet.
 
+26/12/2025
+    The Run button prototype supports interactive query analysis, dynamically generating logical execution steps and visual plans in response to user input.
+
+    Planning to make small upgrades to Run to highlight steps and nodes more informatively.
