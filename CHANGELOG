@@ -20,3 +20,11 @@
     The Run button prototype supports interactive query analysis, dynamically generating logical execution steps and visual plans in response to user input.
 
     Planning to make small upgrades to Run to highlight steps and nodes more informatively.
+
+28/12/2025
+    Added to Run step-through highlights for both steps and diagram visuals.
+
+    Cleaned up the code by separating the different parts of the code in separate files and folders.
+
+    Pushing all the initial spine for the code into the github. 
+
