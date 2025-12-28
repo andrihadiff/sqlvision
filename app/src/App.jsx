@@ -1,116 +1,85 @@
 import { useState } from "react";
 import "./App.css";
 
-function PlaceholderTable() {
-  return (
-    <div className="placeholder-table">
-      <div className="row header">
-        <span className="cell" />
-        <span className="cell" />
-        <span className="cell" />
-      </div>
-      {[...Array(6)].map((_, i) => (
-        <div className="row" key={i}>
-          <span className="cell" />
-          <span className="cell" />
-          <span className="cell" />
-        </div>
-      ))}
-    </div>
-  );
-}
+import AboutModal from "./components/about";
+import HelpModal from "./components/help";
+
+import TopBar from "./components/topbar";
+import QueryPanel from "./components/querypanel";
+import OutputPanel from "./components/outputpanel";
+
+import { analyseQuery } from "./logic/analysequery";
 
 export default function App() {
+  const [runStatus, setRunStatus] = useState("");
+  const [steps, setSteps] = useState([]);
+  const [planNodes, setPlanNodes] = useState([]);
+
   const [tab, setTab] = useState("results");
   const [query, setQuery] = useState("");
 
+  const [showAbout, setShowAbout] = useState(false);
+  const [showHelp, setShowHelp] = useState(false);
+
+  const [activeStep, setActiveStep] = useState(-1);
+
+  function handleRun() {
+    setRunStatus("Analysing query...");
+    const { steps: newSteps, nodes } = analyseQuery(query);
+
+    setSteps(newSteps);
+    setPlanNodes(nodes);
+
+    setActiveStep(0);
+    setTab("steps");
+
+    setTimeout(() => setRunStatus(""), 800);
+  }
+
+  function canStep() {
+    return steps.length > 0 && planNodes.length > 0 && activeStep >= 0;
+  }
+
+  function stepBack() {
+    if (!canStep()) return;
+    setActiveStep((s) => Math.max(0, s - 1));
+  }
+
+  function stepNext() {
+    if (!canStep()) return;
+    const maxIdx = Math.min(steps.length, planNodes.length) - 1;
+    setActiveStep((s) => Math.min(maxIdx, s + 1));
+  }
+
+  function stepReset() {
+    if (!canStep()) return;
+    setActiveStep(0);
+  }
+
   return (
     <div className="shell">
-      {/* Top bar */}
-      <header className="topbar">
-        <div className="brand">SQLVision</div>
-        <div className="top-actions">
-          <button className="btn ghost">Docs</button>
-          <button className="btn ghost">About</button>
-          <button className="btn primary" disabled>Deploy</button>
-        </div>
-      </header>
+      <TopBar onOpenHelp={() => setShowHelp(true)} onOpenAbout={() => setShowAbout(true)} />
 
-      {/* Two-column layout */}
       <main className="layout">
-        {/* Left: editor */}
-        <section className="panel editor">
-          <div className="panel-head">
-            <h2>Query</h2>
-            <span className="badge">Design mode</span>
-          </div>
+        <QueryPanel
+          query={query}
+          setQuery={setQuery}
+          onRun={handleRun}
+          runDisabled={!query.trim()}
+          runStatus={runStatus}
+          steps={steps}
+          planNodes={planNodes}
+          activeStep={activeStep}
+          onBack={stepBack}
+          onNext={stepNext}
+          onReset={stepReset}
+        />
 
-          <textarea
-            className="editor-input"
-            rows={12}
-            placeholder="Write SQL here…  e.g. SELECT name, age FROM students WHERE age > 20;"
-            value={query}
-            onChange={(e) => setQuery(e.target.value)}
-          />
-
-          <div className="toolbar">
-            <button className="btn primary" disabled>Run</button>
-            <button className="btn" disabled>Format</button>
-            <button className="btn ghost" onClick={() => setQuery("")}>Clear</button>
-          </div>
-
-          <div className="hint">
-            No database wired yet — we’re just building the UI skeleton.
-          </div>
-        </section>
-
-        {/* Right: tabs / output */}
-        <section className="panel output">
-          <div className="tabs">
-            {["results", "steps", "diagram"].map((t) => (
-              <button
-                key={t}
-                className={`tab ${tab === t ? "active" : ""}`}
-                onClick={() => setTab(t)}
-              >
-                {t === "results" ? "Results" : t === "steps" ? "Steps" : "Diagram"}
-              </button>
-            ))}
-          </div>
-
-          <div className="tab-body">
-            {tab === "results" && (
-              <>
-                <h3 className="section-title">Result preview</h3>
-                <PlaceholderTable />
-              </>
-            )}
-            {tab === "steps" && (
-              <div className="steps">
-                <h3 className="section-title">Planned execution steps</h3>
-                <ol>
-                  <li>Scan table <code>students</code></li>
-                  <li>Filter rows where <code>age &gt; 20</code></li>
-                  <li>Project columns <code>name, age</code></li>
-                  <li>Order / Group (if present)</li>
-                </ol>
-              </div>
-            )}
-            {tab === "diagram" && (
-              <div className="diagram">
-                <h3 className="section-title">Logical plan (diagram)</h3>
-                <div className="diagram-canvas">
-                  <div className="node">SCAN students</div>
-                  <div className="arrow" />
-                  <div className="node">FILTER age &gt; 20</div>
-                  <div className="arrow" />
-                  <div className="node">PROJECT name, age</div>
-                </div>
-              </div>
-            )}
-          </div>
-        </section>
+        <OutputPanel tab={tab} setTab={setTab} steps={steps} planNodes={planNodes} activeStep={activeStep} />
       </main>
+
+      <AboutModal open={showAbout} onClose={() => setShowAbout(false)} />
+      <HelpModal open={showHelp} onClose={() => setShowHelp(false)} />
 
       <footer className="footer">
         <span>© {new Date().getFullYear()} SQLVision · UI skeleton</span>
