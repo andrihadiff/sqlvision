@@ -1,3 +1,5 @@
+Stage 1 - Setup + UI-Focus
+
 5/11/2025
     Mirrored the GitLab repo onto my GitHub repo to get the CI/CD configuration working 
     (GitLab did not have the permissions needed)
@@ -27,4 +29,9 @@
     Cleaned up the code by separating the different parts of the code in separate files and folders.
 
     Pushing all the initial spine for the code into the github. 
+
+6/1/2026
+    Added the general step details in each step-through.
+
+    Added the example queries feature where a range of example queries are present to quickly test or present a demonstration.
 
