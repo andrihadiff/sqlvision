@@ -10,6 +10,8 @@ import OutputPanel from "./components/outputpanel";
 
 import { analyseQuery } from "./logic/analysequery";
 
+import { EXAMPLE_QUERIES } from "./constants/examplequeries";
+
 export default function App() {
   const [runStatus, setRunStatus] = useState("");
   const [steps, setSteps] = useState([]);
@@ -56,6 +58,18 @@ export default function App() {
     setActiveStep(0);
   }
 
+  function loadExample(exampleId) {
+  const item = EXAMPLE_QUERIES.find((x) => x.id === exampleId);
+  if (!item) return;
+
+  setQuery(item.sql);
+  setTab("results");
+  setSteps([]);
+  setPlanNodes([]);
+  setActiveStep(-1);
+  setRunStatus("");
+}
+
   return (
     <div className="shell">
       <TopBar onOpenHelp={() => setShowHelp(true)} onOpenAbout={() => setShowAbout(true)} />
@@ -73,9 +87,15 @@ export default function App() {
           onBack={stepBack}
           onNext={stepNext}
           onReset={stepReset}
+          onLoadExample={loadExample}
         />
 
-        <OutputPanel tab={tab} setTab={setTab} steps={steps} planNodes={planNodes} activeStep={activeStep} />
+        <OutputPanel 
+          tab={tab} 
+          setTab={setTab} 
+          steps={steps} 
+          planNodes={planNodes} 
+          activeStep={activeStep} />
       </main>
 
       <AboutModal open={showAbout} onClose={() => setShowAbout(false)} />

@@ -143,3 +143,90 @@ body{
   outline: 2px solid rgba(255, 255, 255, 0.35);
   transform: scale(1.02);
 }
+
+.step-details {
+  margin-top: 12px;
+  padding: 12px 14px;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+}
+
+.step-details-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.step-tag {
+  font-size: 0.85rem;
+  opacity: 0.8;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+}
+
+.step-body {
+  margin: 10px 0 0;
+  opacity: 0.9;
+  line-height: 1.4;
+}
+
+.step-tip {
+  margin: 8px 0 0;
+  opacity: 0.75;
+  font-size: 0.95rem;
+}
+
+.example-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+  margin-bottom: 10px;
+}
+
+.example-label {
+  opacity: 0.75;
+  font-size: 0.9rem;
+}
+
+.example-select {
+  flex: 1;
+  max-width: 240px;
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.12);
+  color: inherit;
+  border-radius: 10px;
+  padding: 8px 10px;
+}
+
+.example-picker {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+}
+
+.example-label {
+  font-size: 0.9rem;
+  opacity: 0.8;
+}
+
+.example-select {
+  appearance: none;
+  background: rgba(255, 255, 255, 0.08);
+  color: inherit;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  border-radius: 10px;
+  padding: 6px 12px;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.example-select:focus {
+  outline: none;
+  border-color: rgba(100, 150, 255, 0.6);
+  background: rgba(255, 255, 255, 0.12);
+}

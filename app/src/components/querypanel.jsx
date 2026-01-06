@@ -1,3 +1,5 @@
+import ExamplePicker from "./examplepicker";
+
 export default function QueryPanel({
   query,
   setQuery,
@@ -10,6 +12,7 @@ export default function QueryPanel({
   onBack,
   onNext,
   onReset,
+  onLoadExample,
 }) {
   const maxIdx = Math.min(steps.length, planNodes.length) - 1;
 
@@ -19,6 +22,8 @@ export default function QueryPanel({
         <h2>Query</h2>
         <span className="badge">Design mode</span>
       </div>
+
+      <ExamplePicker onPick={(id) => onLoadExample?.(id)} />
 
       <textarea
         className="editor-input"
