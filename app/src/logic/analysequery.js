@@ -1,6 +1,21 @@
 export function analyseQuery(q) {
   const s = q.trim().toLowerCase();
 
+  const looksLikeSql =
+  /\bselect\b/.test(s) ||
+  /\binsert\b/.test(s) ||
+  /\bupdate\b/.test(s) ||
+  /\bdelete\b/.test(s) ||
+  /\bcreate\b/.test(s) ||
+  /\bdrop\b/.test(s);
+
+if (!looksLikeSql) {
+  return {
+    steps: ["Invalid Query"],
+    nodes: ["INVALID"],
+  };
+}
+
   if (!s) {
     return {
       steps: ["Enter a query to generate execution steps."],

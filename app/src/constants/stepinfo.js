@@ -52,5 +52,11 @@ export const STEP_INFO = {
     title: "No query",
     body: "Enter a query and click Run to generate an execution plan.",
     tip: ""
-  }
+  },
+  INVALID: {
+    title: "Invalid query",
+    body: "SQLVision couldn't recognise this as a SQL query. Try starting with SELECT, or choose an example query.",
+    tip: "Example: SELECT * FROM students;"
+},
+
 };

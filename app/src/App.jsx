@@ -12,6 +12,8 @@ import { analyseQuery } from "./logic/analysequery";
 
 import { EXAMPLE_QUERIES } from "./constants/examplequeries";
 
+import { formatSql } from "./logic/formatsql";
+
 export default function App() {
   const [runStatus, setRunStatus] = useState("");
   const [steps, setSteps] = useState([]);
@@ -24,6 +26,19 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
 
   const [activeStep, setActiveStep] = useState(-1);
+
+  function handleClearAll() {
+  setQuery("");
+  setSteps([]);
+  setPlanNodes([]);
+  setActiveStep(-1);
+  setRunStatus("");
+  setTab("results");
+}
+
+  function handleFormat() {
+  setQuery((q) => formatSql(q));
+}
 
   function handleRun() {
     setRunStatus("Analysing query...");
@@ -88,6 +103,8 @@ export default function App() {
           onNext={stepNext}
           onReset={stepReset}
           onLoadExample={loadExample}
+          onFormat={handleFormat}
+          onClear={handleClearAll}
         />
 
         <OutputPanel 

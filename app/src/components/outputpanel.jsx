@@ -45,7 +45,7 @@ export default function OutputPanel({ tab, setTab, steps, planNodes, activeStep 
           <div className="diagram">
             <h3 className="section-title">Logical plan (diagram)</h3>
             <div className="diagram-canvas">
-              {(planNodes.length ? planNodes : ["Run to generate plan"]).map((n, i) => (
+              {(planNodes.length ? planNodes : ["Run to generate diagram"]).map((n, i) => (
                 <div key={i} className="diagram-row">
                   <div className={`node ${i === activeStep ? "active-node" : ""}`}>{n}</div>
                   {i < (planNodes.length ? planNodes.length : 1) - 1 && <div className="arrow" />}

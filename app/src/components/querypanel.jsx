@@ -13,6 +13,8 @@ export default function QueryPanel({
   onNext,
   onReset,
   onLoadExample,
+  onFormat,
+  onClear,
 }) {
   const maxIdx = Math.min(steps.length, planNodes.length) - 1;
 
@@ -23,12 +25,12 @@ export default function QueryPanel({
         <span className="badge">Design mode</span>
       </div>
 
-      <ExamplePicker onPick={(id) => onLoadExample?.(id)} />
+      <ExamplePicker onPick={onLoadExample} />
 
       <textarea
         className="editor-input"
         rows={12}
-        placeholder="Write SQL here…  e.g. SELECT name, age FROM students WHERE age > 20;"
+        placeholder="Input the SQL queries here or pick an example!"
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -65,10 +67,16 @@ export default function QueryPanel({
           </div>
         )}
 
-        <button className="btn" disabled>
-          Format
+        <button
+            className="btn"
+            onClick={onFormat}
+            disabled={!query.trim()}
+            title={!query.trim() ? "Enter a query to format" : "Format query"}
+            >
+            Format
         </button>
-        <button className="btn ghost" onClick={() => setQuery("")}>
+
+        <button className="btn ghost" onClick={onClear}>
           Clear
         </button>
       </div>

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState } from "react"; 
 import { EXAMPLE_QUERIES } from "../constants/examplequeries";
 
 export default function ExamplePicker({ onPick }) {
