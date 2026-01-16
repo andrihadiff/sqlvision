@@ -42,4 +42,12 @@ Stage 1 - Setup + UI-Focus
 
     Did some slight fixing on tiny bugs just to ensure thoroughness for app features.
 
-    
+Phase 2 - Advancement
+
+15/1/2026
+    Began coding the advanced step details and diagram.
+
+    Added the setup SQL button for users to provide their own table names for their own understanding or classes.
+
+
+
