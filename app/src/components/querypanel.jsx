@@ -15,6 +15,15 @@ export default function QueryPanel({
   onLoadExample,
   onFormat,
   onClear,
+
+  setupSql,
+  setSetupSql,
+  onApplySetup,
+  setupDisabled,
+  setupStatus,
+
+  dbReady,
+  dbStatus,
 }) {
   const maxIdx = Math.min(steps.length, planNodes.length) - 1;
 
@@ -25,12 +34,16 @@ export default function QueryPanel({
         <span className="badge">Design mode</span>
       </div>
 
+      <div className="hint">
+        DB: {dbStatus === "ready" ? "Ready ✓" : dbStatus === "error" ? "Error ✗" : "Loading…"}
+      </div>
+
       <ExamplePicker onPick={onLoadExample} />
 
       <textarea
         className="editor-input"
         rows={12}
-        placeholder="Input the SQL queries here or pick an example!"
+        placeholder="Write a SELECT query here, or pick an example."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
@@ -40,10 +53,11 @@ export default function QueryPanel({
           className="btn primary"
           onClick={onRun}
           disabled={runDisabled}
-          title={runDisabled ? "Enter a query to run" : "Run query"}
+          title={!dbReady ? "Loading database..." : runDisabled ? "Enter a SELECT query to run" : "Run query"}
         >
-          Run
+          {!dbReady ? "Loading..." : "Run"}
         </button>
+
 
         {steps.length > 0 && (
           <div className="step-controls">
@@ -68,12 +82,12 @@ export default function QueryPanel({
         )}
 
         <button
-            className="btn"
-            onClick={onFormat}
-            disabled={!query.trim()}
-            title={!query.trim() ? "Enter a query to format" : "Format query"}
-            >
-            Format
+          className="btn"
+          onClick={onFormat}
+          disabled={!query.trim()}
+          title={!query.trim() ? "Enter a query to format" : "Format query"}
+        >
+          Format
         </button>
 
         <button className="btn ghost" onClick={onClear}>
@@ -81,11 +95,36 @@ export default function QueryPanel({
         </button>
       </div>
 
-      {runStatus && <div className="hint">{runStatus}</div>}
+      <div className="setup-block">
+        <div className="setup-head">
+          <div className="setup-title">Setup SQL</div>
+          <button
+            className="btn"
+            onClick={onApplySetup}
+            disabled={setupDisabled}
+            title={setupDisabled ? "Enter setup SQL (CREATE/INSERT) to apply" : "Apply setup SQL"}
+          >
+            Apply Setup
+          </button>
+        </div>
 
-      <div className="hint">
-        No database wired yet — Just building the UI skeleton before the real business happens.
+        
+
+        <textarea
+          className="setup-input"
+          rows={6}
+          placeholder={"Optional: CREATE TABLE / INSERT INTO ...\nExample:\nCREATE TABLE t(id INTEGER);\nINSERT INTO t VALUES (1);"}
+          value={setupSql}
+          onChange={(e) => setSetupSql(e.target.value)}
+        />
+
+        <div className="hint">
+          Use Setup SQL for CREATE/INSERT. Use Run for SELECT queries you want to visualize.
+        </div>
       </div>
+
+      {runStatus && <div className="hint">{runStatus}</div>}
+      {setupStatus && <div className="hint">{setupStatus}</div>}
     </section>
   );
 }
