@@ -49,5 +49,7 @@ Phase 2 - Advancement
 
     Added the setup SQL button for users to provide their own table names for their own understanding or classes.
 
+4/2/2026
+    Implemented GitLab CI pipeline with a Docker-based runner to automatically build and validate the application.
 
 
