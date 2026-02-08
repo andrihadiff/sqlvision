@@ -52,4 +52,14 @@ Phase 2 - Advancement
 4/2/2026
     Implemented GitLab CI pipeline with a Docker-based runner to automatically build and validate the application.
 
+8/2/2026
+    Implemented persistent Setup SQL saving using browser localStorage, allowing users to store and reuse multiple custom database schemas across  sessions.
+
+    Added functionality to apply, delete, and manage saved table setups, enabling iterative practice without retyping schema definitions.
+
+    Introduced a Reset Database feature to restore the default demo schema and resolve setup conflicts.
+
+    Improved setup feedback messaging to distinguish between successful application, repeated application, and setup errors.
+
+    Fixed an issue where saved setups were unintentionally overwritten on page refresh by correcting localStorage state initialisation logic.
 
