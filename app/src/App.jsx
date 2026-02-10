@@ -14,6 +14,12 @@ import { formatSql } from "./logic/formatsql";
 
 import { createDemoDb, run } from "./logic/db";
 
+const LS_KEY = "sqlvision:saved_setups";
+
+function uid() {
+  return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
+}
+
 export default function App() {
   const [db, setDb] = useState(null);
 
@@ -26,6 +32,17 @@ export default function App() {
 
   const [setupSql, setSetupSql] = useState("");
   const [setupStatus, setSetupStatus] = useState("");
+  const [setupName, setSetupName] = useState("");
+
+  const [savedSetups, setSavedSetups] = useState(() => {
+  try {
+    const raw = localStorage.getItem(LS_KEY);
+    const parsed = raw ? JSON.parse(raw) : [];
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+});
 
   const [result, setResult] = useState({ columns: [], rows: [] });
   const [error, setError] = useState("");
@@ -35,40 +52,48 @@ export default function App() {
 
   const [activeStep, setActiveStep] = useState(-1);
 
-  const [dbStatus, setDbStatus] = useState("loading"); 
+  const [dbStatus, setDbStatus] = useState("loading");
+
+useEffect(() => {
+  try {
+    localStorage.setItem(LS_KEY, JSON.stringify(savedSetups));
+  } catch (e) {
+    console.warn("Failed to save setups:", e);
+  }
+}, [savedSetups]);
 
   useEffect(() => {
-  let alive = true;
+    let alive = true;
 
-  setDbStatus("loading");
-  setRunStatus("Loading database...");
+    setDbStatus("loading");
+    setRunStatus("Loading database...");
 
-  (async () => {
-    try {
-      const demo = await createDemoDb();
-      if (!alive) return;
+    (async () => {
+      try {
+        const demo = await createDemoDb();
+        if (!alive) return;
 
-      setDb(demo);
-      setDbStatus("ready");
-      setRunStatus("");
-    } catch (e) {
-      if (!alive) return;
+        setDb(demo);
+        setDbStatus("ready");
+        setRunStatus("");
+      } catch (e) {
+        if (!alive) return;
 
-      setDbStatus("error");
-      setError(e?.message || "Failed to load database.");
-      setRunStatus("Database failed to load.");
-    }
-  })();
+        setDbStatus("error");
+        setError(e?.message || "Failed to load database.");
+        setRunStatus("Database failed to load.");
+      }
+    })();
 
-  return () => {
-    alive = false;
-  };
-}, []);
-
+    return () => {
+      alive = false;
+    };
+  }, []);
 
   function handleClearAll() {
     setQuery("");
     setSetupSql("");
+    setSetupName("");
     setSteps([]);
     setPlanNodes([]);
     setActiveStep(-1);
@@ -84,68 +109,145 @@ export default function App() {
   }
 
   function handleRun() {
-  setError("");
+    setError("");
 
-  if (!db) {
-    setError("Database not ready yet.");
-    setTab("results");
-    return;
+    if (!db) {
+      setError("Database not ready yet.");
+      setTab("results");
+      return;
+    }
+
+    setRunStatus("Running query...");
+
+    try {
+      const execRes = run(db, query);
+
+      if (execRes?.error) {
+        setError(execRes.error);
+        setResult({ columns: [], rows: [] });
+        setSteps([]);
+        setPlanNodes([]);
+        setActiveStep(-1);
+        setTab("results");
+        return;
+      }
+
+      setResult(execRes);
+
+      setRunStatus("Analysing query...");
+      const { steps: newSteps, nodes } = analyseQuery(query);
+
+      setSteps(newSteps);
+      setPlanNodes(nodes);
+
+      setActiveStep(0);
+      setTab("steps");
+    } catch (e) {
+      setError(e?.message || "Run failed.");
+      setTab("results");
+    } finally {
+      setRunStatus("");
+    }
   }
 
-  setRunStatus("Running query...");
+  function applySetupSql(sql) {
+    setError("");
+    setSetupStatus("");
 
-  try {
-    const execRes = run(db, query);
+    if (!db) {
+      setError("Database not ready yet.");
+      setTab("results");
+      return false;
+    }
 
-    if (execRes?.error) {
-      setError(execRes.error);
+    if (!sql.trim()) return false;
+
+    try {
+      db.run(sql);
+      setSetupStatus("Setup applied ✓");
+      return true;
+
+    } catch (e) {
+      const msg = e?.message || "";
+
+      if (/already exists/i.test(msg)) {
+        setSetupStatus("Setup already applied ✓");
+        return false;
+      }
+
+      setError(msg);
+      setSetupStatus("Setup failed ✗");
+      setTab("results");
+      return false;
+    }
+  }
+
+  function handleApplySetup() {
+    applySetupSql(setupSql);
+  }
+
+  function handleSaveSetup() {
+    setSetupStatus("");
+    setError("");
+
+    const sql = setupSql.trim();
+    if (!sql) {
+      setSetupStatus("Nothing to save (Setup SQL is empty).");
+      return;
+    }
+
+    const name = setupName.trim() || `Setup ${savedSetups.length + 1}`;
+
+    const item = {
+      id: uid(),
+      name,
+      sql,
+      createdAt: Date.now(),
+    };
+
+    setSavedSetups((prev) => [item, ...prev]);
+    setSetupStatus("Saved setup ✓");
+    setSetupName("");
+  }
+
+  function handleApplySavedSetup(id) {
+    const item = savedSetups.find((x) => x.id === id);
+    if (!item) return;
+
+    setSetupSql(item.sql);
+    applySetupSql(item.sql);
+  }
+
+  function handleDeleteSavedSetup(id) {
+    setSavedSetups((prev) => prev.filter((x) => x.id !== id));
+  }
+
+  async function handleResetDb() {
+    setError("");
+    setSetupStatus("");
+    setRunStatus("Resetting database...");
+    setDbStatus("loading");
+
+    try {
+      const fresh = await createDemoDb();
+      setDb(fresh);
+      setDbStatus("ready");
+
       setResult({ columns: [], rows: [] });
       setSteps([]);
       setPlanNodes([]);
       setActiveStep(-1);
       setTab("results");
-      return;
+
+      setSetupStatus("Database reset ✓");
+    } catch (e) {
+      setDbStatus("error");
+      setError(e?.message || "Failed to reset database.");
+      setSetupStatus("Database reset failed ✗");
+    } finally {
+      setRunStatus("");
     }
-
-    setResult(execRes);
-
-    setRunStatus("Analysing query...");
-    const { steps: newSteps, nodes } = analyseQuery(query);
-
-    setSteps(newSteps);
-    setPlanNodes(nodes);
-
-    setActiveStep(0);
-    setTab("steps");
-  } catch (e) {
-    setError(e?.message || "Run failed.");
-    setTab("results");
-  } finally {
-    setRunStatus("");
   }
-}
-
- function handleApplySetup() {
-  setError("");
-  setSetupStatus("");
-
-  if (!db) {
-    setError("Database not ready yet.");
-    setTab("results");
-    return;
-  }
-
-  if (!setupSql.trim()) return;
-
-  try {
-    db.run(setupSql); 
-    setSetupStatus("Setup applied ✓");
-  } catch (e) {
-    setError(e?.message || "Setup failed.");
-    setSetupStatus("Setup failed ✗");
-    setTab("results");
-  }
-}
 
   function canStep() {
     return steps.length > 0 && planNodes.length > 0 && activeStep >= 0;
@@ -181,8 +283,6 @@ export default function App() {
     setError("");
   }
 
-  console.log("DB ready?", !!db);
-
   return (
     <div className="shell">
       <TopBar
@@ -211,9 +311,15 @@ export default function App() {
           onApplySetup={handleApplySetup}
           setupDisabled={!setupSql.trim() || !db}
           setupStatus={setupStatus}
+          setupName={setupName}
+          setSetupName={setSetupName}
+          onSaveSetup={handleSaveSetup}
+          savedSetups={savedSetups}
+          onApplySavedSetup={handleApplySavedSetup}
+          onDeleteSavedSetup={handleDeleteSavedSetup}
+          onResetDb={handleResetDb}
           dbReady={!!db}
           dbStatus={dbStatus}
-
         />
 
         <OutputPanel
