@@ -2,7 +2,7 @@ import initSqlJs from "sql.js";
 
 export async function createDemoDb() {
   const SQL = await initSqlJs({
-    locateFile: () => "/sql-wasm.wasm",
+    locateFile: (file) => `${import.meta.env.BASE_URL}${file}`,
   });
 
   const db = new SQL.Database();

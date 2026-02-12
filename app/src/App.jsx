@@ -9,7 +9,6 @@ import QueryPanel from "./components/querypanel";
 import OutputPanel from "./components/outputpanel";
 
 import { analyseQuery } from "./logic/analysequery";
-import { EXAMPLE_QUERIES } from "./constants/examplequeries";
 import { formatSql } from "./logic/formatsql";
 
 import { createDemoDb, run } from "./logic/db";
@@ -20,6 +19,22 @@ function uid() {
   return `${Date.now()}_${Math.random().toString(16).slice(2)}`;
 }
 
+const DIALECT_STARTERS = {
+    sqlite: `SELECT name, age
+  FROM students
+  WHERE age >= 21
+  ORDER BY age DESC;`,
+    postgres: `SELECT name, salary
+  FROM emp
+  WHERE salary >= 1200
+  ORDER BY salary DESC;`,
+    mysql: `SELECT d.name AS dept, COUNT(*) AS headcount
+  FROM emp e
+  JOIN dept d ON d.id = e.dept_id
+  GROUP BY d.name
+  ORDER BY headcount DESC;`,
+  };
+  
 export default function App() {
   const [db, setDb] = useState(null);
 
@@ -54,13 +69,22 @@ export default function App() {
 
   const [dbStatus, setDbStatus] = useState("loading");
 
-useEffect(() => {
-  try {
-    localStorage.setItem(LS_KEY, JSON.stringify(savedSetups));
-  } catch (e) {
-    console.warn("Failed to save setups:", e);
-  }
-}, [savedSetups]);
+  const [dialect, setDialect] = useState("sqlite");
+  const [showDialectPrompt, setShowDialectPrompt] = useState(false);
+  const [pendingDialect, setPendingDialect] = useState(null);
+
+  useEffect(() => {
+    setQuery((q) => (q.trim() ? q : DIALECT_STARTERS.sqlite));
+  }, []);
+
+
+  useEffect(() => {
+    try {
+      localStorage.setItem(LS_KEY, JSON.stringify(savedSetups));
+    } catch (e) {
+      console.warn("Failed to save setups:", e);
+    }
+  }, [savedSetups]);
 
   useEffect(() => {
     let alive = true;
@@ -141,7 +165,7 @@ useEffect(() => {
       setPlanNodes(nodes);
 
       setActiveStep(0);
-      setTab("steps");
+      setTab("results");
     } catch (e) {
       setError(e?.message || "Run failed.");
       setTab("results");
@@ -269,29 +293,54 @@ useEffect(() => {
     setActiveStep(0);
   }
 
-  function loadExample(exampleId) {
-    const item = EXAMPLE_QUERIES.find((x) => x.id === exampleId);
-    if (!item) return;
-
-    setQuery(item.sql);
-    setTab("results");
-    setSteps([]);
-    setPlanNodes([]);
-    setActiveStep(-1);
-    setRunStatus("");
-    setResult({ columns: [], rows: [] });
-    setError("");
+  function requestDialectChange(next) {
+    if (!query.trim()) {
+      setDialect(next);
+      setQuery(DIALECT_STARTERS[next] || "");
+      return;
+    }
+    setPendingDialect(next);
+    setShowDialectPrompt(true);
   }
+
+function confirmDialectOverwrite() {
+  const next = pendingDialect;
+  setShowDialectPrompt(false);
+  setPendingDialect(null);
+  if (!next) return;
+
+  setDialect(next);
+  setQuery(DIALECT_STARTERS[next] || "");
+  setTab("results");
+  setResult({ columns: [], rows: [] });
+  setError("");
+  setSteps([]);
+  setPlanNodes([]);
+  setActiveStep(-1);
+}
+
+function cancelDialectOverwrite() {
+  setShowDialectPrompt(false);
+  setPendingDialect(null);
+}
+
 
   return (
     <div className="shell">
       <TopBar
+        dialect={dialect}
+        onChangeDialect={requestDialectChange}
+        onRun={handleRun}
+        runDisabled={!query.trim() || !db}
+        onShare={() => alert("Share coming next phase")}
         onOpenHelp={() => setShowHelp(true)}
         onOpenAbout={() => setShowAbout(true)}
       />
 
+
       <main className="layout">
         <QueryPanel
+          tab={tab}
           query={query}
           setQuery={setQuery}
           onRun={handleRun}
@@ -303,7 +352,6 @@ useEffect(() => {
           onBack={stepBack}
           onNext={stepNext}
           onReset={stepReset}
-          onLoadExample={loadExample}
           onFormat={handleFormat}
           onClear={handleClearAll}
           setupSql={setupSql}
@@ -330,12 +378,44 @@ useEffect(() => {
           activeStep={activeStep}
           result={result}
           error={error}
+          setupSql={setupSql}
+          setSetupSql={setSetupSql}
+          onApplySetup={handleApplySetup}
+          setupDisabled={!setupSql.trim() || !db}
+          setupStatus={setupStatus}
+          setupName={setupName}
+          setSetupName={setSetupName}
+          onSaveSetup={handleSaveSetup}
+          savedSetups={savedSetups}
+          onApplySavedSetup={handleApplySavedSetup}
+          onDeleteSavedSetup={handleDeleteSavedSetup}
+          onResetDb={handleResetDb}
           dbReady={!!db}
         />
+
       </main>
 
       <AboutModal open={showAbout} onClose={() => setShowAbout(false)} />
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} />
+
+        {showDialectPrompt && (
+          <div className="modal-backdrop" onClick={cancelDialectOverwrite}>
+            <div className="modal" onClick={(e) => e.stopPropagation()}>
+              <h3 style={{ marginTop: 0 }}>Replace current query?</h3>
+              <p className="muted">
+                Switching dialect will load a starter query and overwrite what you’ve written.
+              </p>
+              <div style={{ display: "flex", gap: 10, justifyContent: "flex-end" }}>
+                <button className="btn ghost" onClick={cancelDialectOverwrite}>
+                  Cancel
+                </button>
+                <button className="btn primary" onClick={confirmDialectOverwrite}>
+                  Replace
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       <footer className="footer">
         <span>© {new Date().getFullYear()} SQLVision · UI skeleton</span>
