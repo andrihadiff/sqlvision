@@ -53,7 +53,7 @@ Phase 2 - Advancement
     Implemented GitLab CI pipeline with a Docker-based runner to automatically build and validate the application.
 
 8/2/2026
-    Implemented persistent Setup SQL saving using browser localStorage, allowing users to store and reuse multiple custom database schemas across  sessions.
+    Implemented persistent Setup SQL saving using browser localStorage, allowing users to store and reuse multiple custom database schemas across sessions.
 
     Added functionality to apply, delete, and manage saved table setups, enabling iterative practice without retyping schema definitions.
 
@@ -62,4 +62,45 @@ Phase 2 - Advancement
     Improved setup feedback messaging to distinguish between successful application, repeated application, and setup errors.
 
     Fixed an issue where saved setups were unintentionally overwritten on page refresh by correcting localStorage state initialisation logic.
+
+11/2/2026
+    Refactored the overall UI layout in response to supervisor feedback regarding visual clutter and overcrowding on the left panel.
+
+    Transitioned to a code-editor inspired layout (similar to Code-Pad), separating concerns clearly:
+    - Left panel dedicated purely to the SQL editor.
+    - Right panel reorganised into tab-based outputs (Results, Steps, Diagram, Schema).
+    - Top bar centralised primary actions (Dialect selector, Run, Share).
+
+    Removed duplicate Run button from the editor panel to reduce visual noise and establish a single primary execution action in the TopBar.
+
+    Restricted step navigation controls (Back, Next, Reset) to appear only when the "Steps" tab is active, improving contextual clarity.
+
+    Moved Setup SQL functionality into a dedicated "Schema" tab to declutter the editor and better separate database setup from query execution.
+
+    Removed the Example Queries dropdown in favour of dialect-based starter queries.
+
+    Implemented automatic starter query loading for the default SQLite dialect on initial page load, providing immediate usability without manual input.
+
+    Added dialect-switch behaviour:
+        - Automatically loads starter query if the editor is empty.
+        - Prompts user before overwriting existing queries when switching dialects.
+
+    Improved overall UI consistency and reduced cognitive load, aligning the application more closely with a professional editor workflow.
+
+12/2/2026
+    Continued UI simplification following the structural refactor.
+
+    Removed the Example Queries feature to streamline the editor interface and reduce redundant controls.
+
+    Implemented automatic starter query loading for the default SQLite dialect on initial application load, ensuring immediate usability.
+
+    Refined dialect switching behaviour:
+        - Starter query loads automatically if the editor is empty.
+        - Confirmation modal appears before overwriting existing user input when changing dialects.
+
+    Verified Schema tab functionality through manual testing:
+        - Confirmed table creation via Setup SQL.
+        - Confirmed data insertion and querying of user-defined tables.
+        - Validated saved setup persistence via localStorage.
+        - Tested database reset behaviour.
 
