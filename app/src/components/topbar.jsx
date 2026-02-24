@@ -1,6 +1,4 @@
 export default function TopBar({
-  dialect,
-  onChangeDialect,
   onRun,
   runDisabled,
   onShare,
@@ -12,16 +10,7 @@ export default function TopBar({
       <div className="brand">SQLVision</div>
 
       <div className="top-actions">
-        <select
-          className="dialect-select"
-          value={dialect}
-          onChange={(e) => onChangeDialect(e.target.value)}
-          title="SQL Dialect"
-        >
-          <option value="sqlite">SQLite</option>
-          <option value="postgres">PostgreSQL</option>
-          <option value="mysql">MySQL</option>
-        </select>
+        <span className="badge">SQLite</span>
 
         <button className="btn primary" onClick={onRun} disabled={runDisabled}>
           Run

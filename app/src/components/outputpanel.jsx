@@ -1,19 +1,21 @@
-import StepDetails from "./stepdetails";
+import { useEffect, useState } from "react";
 import ResultsTable from "./resultstable";
+import SimpleBuilder from "./simplebuilder";
+import SetupEditModal from "./setupeditmodal";
+import TableList from "./tablelist";
+import TableEditModal from "./tableeditmodal";
+import { listTables } from "../logic/schema";
 
 export default function OutputPanel({
+  db,
   tab,
   setTab,
-  steps,
   planNodes,
-  activeStep,
   result,
   error,
 
   setupSql,
   setSetupSql,
-  onApplySetup,
-  setupDisabled,
   setupStatus,
 
   setupName,
@@ -22,16 +24,84 @@ export default function OutputPanel({
   savedSetups,
   onApplySavedSetup,
   onDeleteSavedSetup,
+  onDeleteTableSetup,
 
   onResetDb,
   dbReady,
+
+  onCreateTableSetup,
 }) {
-  const activeNode = activeStep >= 0 ? planNodes[activeStep] : null;
+  const advancedOpen = false;
+
+  const [editOpen, setEditOpen] = useState(false);
+  const [editingId, setEditingId] = useState(null);
+
+  const editingSetup =
+    savedSetups?.find((s) => String(s._id || s.id) === String(editingId)) || null;
+
+  const [tables, setTables] = useState([]);
+  const [tableEditOpen, setTableEditOpen] = useState(false);
+  const [tableEditing, setTableEditing] = useState("");
+
+  function refreshTables() {
+    if (!db) {
+      setTables([]);
+      return;
+    }
+    setTables(listTables(db));
+  }
+
+  useEffect(() => {
+    if (tab !== "schema") return;
+    refreshTables();
+  }, [tab, db]);
+
+  function openEdit(id) {
+    setEditingId(id);
+    setEditOpen(true);
+  }
+
+  function closeEdit() {
+    setEditOpen(false);
+    setEditingId(null);
+  }
+
+  async function handleDeleteFromModal(id) {
+    const ok = await onDeleteSavedSetup(id);
+    if (ok === false) return;
+    closeEdit();
+  }
+
+  function handleApplyFromModal(id) {
+    onApplySavedSetup(id);
+    refreshTables();
+  }
+
+  function handleApplySavedSetup(id) {
+    onApplySavedSetup(id);
+    refreshTables();
+  }
+
+  function openTableEdit(name) {
+    setTableEditing(name);
+    setTableEditOpen(true);
+  }
+
+  function closeTableEdit() {
+    setTableEditOpen(false);
+    setTableEditing("");
+  }
+
+  async function onCreateTable(tableName, sql) {
+    const res = await onCreateTableSetup(tableName, sql);
+    refreshTables();
+    return res;
+  }
 
   return (
     <section className="panel output">
       <div className="tabs">
-        {["results", "steps", "diagram", "schema"].map((t) => (
+        {["results", "diagram", "schema"].map((t) => (
           <button
             key={t}
             className={`tab ${tab === t ? "active" : ""}`}
@@ -39,8 +109,6 @@ export default function OutputPanel({
           >
             {t === "results"
               ? "Results"
-              : t === "steps"
-              ? "Steps"
               : t === "diagram"
               ? "Diagram"
               : "Schema"}
@@ -60,42 +128,16 @@ export default function OutputPanel({
           </>
         )}
 
-        {tab === "steps" && (
-          <>
-            <h3 className="section-title">Planned execution steps</h3>
-            <ol className="steps-list">
-              {(steps.length ? steps : ["Run a query to generate steps."]).map(
-                (st, idx) => (
-                  <li
-                    key={idx}
-                    className={idx === activeStep ? "active-step" : ""}
-                  >
-                    {st}
-                  </li>
-                )
-              )}
-            </ol>
-
-            <StepDetails node={activeNode} />
-          </>
-        )}
-
         {tab === "diagram" && (
           <div className="diagram">
             <h3 className="section-title">Logical plan (diagram)</h3>
             <div className="diagram-canvas">
-              {(planNodes.length ? planNodes : ["Run to generate diagram"]).map(
-                (n, i) => (
-                  <div key={i} className="diagram-row">
-                    <div className={`node ${i === activeStep ? "active-node" : ""}`}>
-                      {n}
-                    </div>
-                    {i < (planNodes.length ? planNodes.length : 1) - 1 && (
-                      <div className="arrow" />
-                    )}
-                  </div>
-                )
-              )}
+              {(planNodes.length ? planNodes : ["Run to generate diagram"]).map((n, i) => (
+                <div key={i} className="diagram-row">
+                  <div className="node">{n}</div>
+                  {i < planNodes.length - 1 && <div className="arrow" />}
+                </div>
+              ))}
             </div>
           </div>
         )}
@@ -109,7 +151,10 @@ export default function OutputPanel({
 
               <button
                 className="btn"
-                onClick={onResetDb}
+                onClick={async () => {
+                  await onResetDb();
+                  refreshTables();
+                }}
                 disabled={!dbReady}
                 title={!dbReady ? "Database not ready" : "Reset database to demo data"}
               >
@@ -118,62 +163,60 @@ export default function OutputPanel({
             </div>
 
             <div className="hint" style={{ marginTop: 8 }}>
-              Use Setup SQL to create tables and insert rows. Next, go back to
-              Results and run your queries.
+              Create tables with Simple mode, then edit rows in the popup editor.
             </div>
 
-            <div className="setup-block" style={{ borderTop: "none", paddingTop: 0 }}>
-              <div className="setup-head">
-                <div className="setup-title">Setup SQL</div>
-                <button
-                  className="btn"
-                  onClick={onApplySetup}
-                  disabled={setupDisabled}
-                  title={
-                    setupDisabled
-                      ? "Enter setup SQL (CREATE/INSERT) to apply"
-                      : "Apply setup SQL"
+            <SimpleBuilder disabled={!dbReady} onCreate={onCreateTable} />
+
+            <TableList tables={tables} onEdit={openTableEdit} />
+
+            {advancedOpen && (
+              <div className="setup-block">
+                <div className="setup-head">
+                  <div className="setup-title">Setup SQL</div>
+                </div>
+
+                <textarea
+                  className="setup-input"
+                  rows={8}
+                  placeholder={
+                    "CREATE TABLE t(id INTEGER);\nINSERT INTO t VALUES (1);\n\n-- then run SELECT queries in Results"
                   }
-                >
-                  Apply Setup
-                </button>
-              </div>
-
-              <textarea
-                className="setup-input"
-                rows={8}
-                placeholder={
-                  "CREATE TABLE t(id INTEGER);\nINSERT INTO t VALUES (1);\n\n-- then run SELECT queries in Results"
-                }
-                value={setupSql}
-                onChange={(e) => setSetupSql(e.target.value)}
-              />
-
-              <div className="setup-save-row">
-                <input
-                  className="setup-name"
-                  placeholder="Name this setup (e.g., JOIN demo)"
-                  value={setupName}
-                  onChange={(e) => setSetupName(e.target.value)}
+                  value={setupSql}
+                  onChange={(e) => setSetupSql(e.target.value)}
                 />
-                <button
-                  className="btn"
-                  onClick={onSaveSetup}
-                  disabled={!setupSql.trim()}
-                  title={!setupSql.trim() ? "Write Setup SQL first" : "Save this setup"}
-                >
-                  Save Setup
-                </button>
+
+                <div className="setup-save-row">
+                  <input
+                    className="setup-name"
+                    placeholder="Name this table (e.g., JOIN demo)"
+                    value={setupName}
+                    onChange={(e) => setSetupName(e.target.value)}
+                  />
+                  <button
+                    className="btn"
+                    onClick={onSaveSetup}
+                    disabled={!setupSql.trim()}
+                    title={!setupSql.trim() ? "Write Setup SQL first" : "Save this setup"}
+                  >
+                    Save Table
+                  </button>
+                </div>
+
+                {setupStatus && <div className="hint">{setupStatus}</div>}
               </div>
+            )}
 
-              {savedSetups?.length > 0 && (
-                <div className="setup-list">
-                  <div className="hint" style={{ marginTop: 10 }}>
-                    Saved setups:
-                  </div>
+            {savedSetups?.length > 0 ? (
+              <div className="setup-list" style={{ marginTop: 14 }}>
+                <div className="hint" style={{ marginTop: 10 }}>
+                  Saved Tables:
+                </div>
 
-                  {savedSetups.map((s) => (
-                    <div className="setup-item" key={s.id}>
+                {savedSetups.map((s) => {
+                  const id = s._id || s.id;
+                  return (
+                    <div className="setup-item" key={id}>
                       <div className="setup-item-left">
                         <div className="setup-item-title">{s.name}</div>
                         <div className="setup-item-meta">
@@ -182,26 +225,45 @@ export default function OutputPanel({
                       </div>
 
                       <div className="setup-item-actions">
-                        <button className="btn" onClick={() => onApplySavedSetup(s.id)}>
+                        <button className="btn" onClick={() => handleApplySavedSetup(id)}>
                           Apply
                         </button>
-                        <button
-                          className="btn ghost"
-                          onClick={() => onDeleteSavedSetup(s.id)}
-                        >
+                        <button className="btn" onClick={() => openEdit(id)}>
+                          Edit
+                        </button>
+                        <button className="btn ghost" onClick={() => onDeleteSavedSetup(id)}>
                           Delete
                         </button>
                       </div>
                     </div>
-                  ))}
-                </div>
-              )}
-
-              {setupStatus && <div className="hint">{setupStatus}</div>}
-            </div>
+                  );
+                })}
+              </div>
+            ) : (
+              <div className="hint" style={{ marginTop: 14 }}>
+                No saved setups yet.
+              </div>
+            )}
           </>
         )}
       </div>
+
+      <SetupEditModal
+        open={editOpen}
+        setup={editingSetup}
+        onClose={closeEdit}
+        onApply={(id) => handleApplyFromModal(id)}
+        onDelete={(id) => handleDeleteFromModal(id)}
+      />
+
+      <TableEditModal
+        open={tableEditOpen}
+        db={db}
+        tableName={tableEditing}
+        onClose={closeTableEdit}
+        onChanged={refreshTables}
+        onDeleteTableSetup={onDeleteTableSetup}
+      />
     </section>
   );
 }
