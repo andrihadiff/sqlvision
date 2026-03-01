@@ -104,3 +104,12 @@ Phase 2 - Advancement
         - Validated saved setup persistence via localStorage.
         - Tested database reset behaviour.
 
+1/3/2026
+
+    Added Share feature where users can share their queries with others
+
+    Using Mongo DB as a database
+
+    Removed Diagram option, added challenges
+
+    
