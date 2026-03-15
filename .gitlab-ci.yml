@@ -1,5 +1,6 @@
 stages:
   - build
+  - deploy
 
 default:
   image: node:20
@@ -13,6 +14,18 @@ build:
   artifacts:
     paths:
       - app/dist
-    expire_in: 1 week
+    expire_in: 1 year
+  only:
+    - main
+
+pages:
+  stage: deploy
+  script:
+    - rm -rf public
+    - mkdir -p public
+    - cp -r app/dist/* public/
+  artifacts:
+    paths:
+      - public
   only:
     - main
