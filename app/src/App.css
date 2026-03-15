@@ -37,6 +37,12 @@ body{
 .btn.primary{background:linear-gradient(180deg,var(--accent),var(--accent-2)); border:none}
 .btn.primary:disabled{opacity:.6; cursor:not-allowed}
 .btn.ghost{background:transparent}
+.topbar-pill{
+  display:inline-flex;
+  align-items:center;
+  cursor:default;
+}
+.topbar-pill:hover{background:transparent}
 
 .layout{
   display:grid; grid-template-columns: 1.1fr 1fr; gap:18px;
@@ -102,19 +108,6 @@ body{
 }
 .placeholder-table .header .cell{height:24px; background:rgba(255,255,255,.12)}
 
-.diagram-canvas{
-  display:flex; align-items:center; gap:14px; padding:18px;
-  border:1px dashed rgba(255,255,255,.2); border-radius:12px;
-  background:rgba(255,255,255,.03);
-}
-
-.node{
-  padding:10px 12px; border-radius:12px; background:rgba(91,138,255,.15);
-  border:1px solid rgba(91,138,255,.4); font-size:14px;
-}
-
-.arrow{width:30px; height:2px; background:rgba(255,255,255,.2)}
-
 .footer{
   border-top:1px solid var(--line); padding:12px 20px; color:var(--muted);
   display:flex; justify-content:center;
@@ -123,12 +116,6 @@ body{
 /* If you keep the footer, it will always be visible at the bottom (static page) */
 .footer{
   flex:0 0 auto;
-}
-
-.diagram-row {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
 }
 
 @media (max-width: 900px){
@@ -204,51 +191,6 @@ body{
   color: rgba(255, 255, 255, 0.45);
 }
 
-.setup-block {
-  margin-top: 14px;
-  padding-top: 12px;
-  border-top: 1px solid var(--line);
-}
-
-.setup-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 8px;
-}
-
-.setup-title {
-  font-weight: 700;
-  font-size: 0.95rem;
-  letter-spacing: 0.2px;
-}
-
-.setup-input {
-  width: 100%;
-  border: 1px solid var(--line);
-  background: rgba(255,255,255,.02);
-  color: var(--text);
-  border-radius: 12px;
-  padding: 12px;
-  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-}
-
-.setup-save-row{
-  display:flex;
-  gap:10px;
-  margin-top:10px;
-}
-
-.setup-name{
-  flex:1;
-  border:1px solid var(--line);
-  background: rgba(255,255,255,.02);
-  color: var(--text);
-  border-radius: 10px;
-  padding: 8px 10px;
-}
-
 .setup-list{
   margin-top: 6px;
   display: grid;
@@ -319,11 +261,51 @@ body{
   color: var(--text);
 }
 
-.schema-head{
+.schema-header{
   display:flex;
   align-items:center;
   justify-content:space-between;
   gap:12px;
+  margin-bottom:16px;
+}
+
+.schema-title{
+  margin:0;
+  font-size:16px;
+  font-weight:600;
+}
+
+.workspace-actions{
+  display:flex;
+  align-items:center;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.workspace-actions button{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+
+.btn.ghost.danger{
+  border-color: rgba(255,80,80,.35);
+  color: #ffb7b7;
+}
+
+.btn.ghost.danger:hover{
+  background: rgba(255,80,80,.1);
+}
+
+.breakdown-list{
+  margin:0;
+  padding-left:20px;
+  display:grid;
+  gap:8px;
+}
+
+.breakdown-item{
+  line-height:1.4;
 }
 
 .builder-block{
@@ -395,6 +377,121 @@ body{
   gap: 10px;
   align-items:center;
   flex-wrap: wrap;
+}
+
+.challenge-layout{
+  display:grid;
+  gap:14px;
+}
+
+.challenge-card{
+  border:1px solid var(--line);
+  border-radius:14px;
+  padding:14px;
+  background: rgba(255,255,255,.02);
+}
+
+.challenge-status{
+  border:1px solid var(--line);
+  border-radius:12px;
+  padding:10px 12px;
+  background:rgba(255,255,255,.03);
+  color:var(--muted);
+  font-size:13px;
+}
+
+.challenge-card-head{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
+}
+
+.challenge-card-actions{
+  display:flex;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.challenge-kicker{
+  font-size:12px;
+  text-transform:uppercase;
+  letter-spacing:.12em;
+  color:var(--muted);
+  margin-bottom:6px;
+}
+
+.challenge-form{
+  display:grid;
+  gap:12px;
+  margin-top:12px;
+}
+
+.challenge-textarea{
+  width:100%;
+  border:1px solid var(--line);
+  background: rgba(255,255,255,.02);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 12px;
+  font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.challenge-prompt{
+  margin-top:12px;
+  line-height:1.6;
+  white-space:pre-wrap;
+}
+
+.challenge-detail-block{
+  margin-top:14px;
+}
+
+.challenge-warning{
+  margin-top:14px;
+  border:1px solid rgba(255,255,255,.08);
+  border-radius:12px;
+  padding:10px 12px;
+  color:var(--muted);
+  background:rgba(255,255,255,.03);
+  font-size:13px;
+}
+
+.challenge-check-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  flex-wrap:wrap;
+}
+
+.challenge-check{
+  margin-top:10px;
+  border-radius:12px;
+  padding:10px 12px;
+  font-size:13px;
+}
+
+.challenge-check.ok{
+  border:1px solid rgba(80,200,120,.4);
+  background:rgba(80,200,120,.12);
+  color:#b8f0c8;
+}
+
+.challenge-check.bad{
+  border:1px solid rgba(255,170,0,.35);
+  background:rgba(255,170,0,.12);
+  color:#ffd88a;
+}
+
+.challenge-expected-row{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  flex-wrap:wrap;
 }
   
 .advanced-wrap{

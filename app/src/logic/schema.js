@@ -34,7 +34,7 @@ export function getTableColumns(db, tableName) {
 
 export function getPrimaryKeyColumn(cols) {
   if (!cols?.length) return null;
-  const pk = cols.find((c) => Number(c.pk) === 1);
+  const pk = cols.find((c) => Number(c.pk) === 1 || c.primary);
   return pk ? pk.name : null;
 }
 
@@ -66,6 +66,104 @@ export function getTableRows(db, tableName, limit = 200) {
         error: inner?.message || e?.message || "Failed to read table.",
       };
     }
+  }
+}
+
+export function snapshotTable(db, tableName) {
+  const columns = getTableColumns(db, tableName);
+  if (!columns.length) return null;
+  const createSql = getCreateTableSql(db, tableName);
+
+  const normalizedColumns = columns.map((column) => ({
+    name: column.name,
+    type: String(column.type || "TEXT").trim().toUpperCase() || "TEXT",
+    primary: Number(column.pk) === 1,
+    notNull: Boolean(column.notnull),
+    defaultValue:
+      column.dflt_value === undefined || column.dflt_value === null
+        ? null
+        : String(column.dflt_value),
+  }));
+
+  const rowsData = getTableRows(db, tableName, 100000);
+  const rows = (rowsData.rows || []).map((row) => {
+    const next = {};
+    rowsData.columns.forEach((columnName, index) => {
+      next[columnName] = row[index] ?? null;
+    });
+    return next;
+  });
+
+  return {
+    name: tableName,
+    createSql,
+    columns: normalizedColumns,
+    rows,
+  };
+}
+
+export function snapshotDb(db) {
+  return listTables(db)
+    .map((tableName) => snapshotTable(db, tableName))
+    .filter(Boolean);
+}
+
+export function snapshotToSql(tables) {
+  const items = Array.isArray(tables) ? tables : [];
+  const lines = ["BEGIN TRANSACTION;"];
+
+  for (const table of items) {
+    const tableName = String(table?.name || "").trim();
+    if (!tableName) continue;
+
+    const createSql = String(table?.createSql || "").trim();
+    if (createSql) {
+      lines.push(ensureSqlEndsWithSemicolon(createSql));
+    } else {
+      const fallbackCreate = buildCreateSqlFromSnapshot(tableName, table?.columns);
+      if (fallbackCreate) lines.push(fallbackCreate);
+    }
+
+    const columns = Array.isArray(table?.columns)
+      ? table.columns
+          .map((column) => String(column?.name || "").trim())
+          .filter(Boolean)
+      : [];
+    const rows = Array.isArray(table?.rows) ? table.rows : [];
+
+    if (!columns.length || !rows.length) continue;
+
+    const colSql = columns.map((name) => safeIdent(name)).join(", ");
+    for (const row of rows) {
+      const values = columns.map((name) => {
+        const value = row && Object.prototype.hasOwnProperty.call(row, name) ? row[name] : null;
+        return toSqlLiteral(value);
+      });
+      lines.push(`INSERT INTO ${safeIdent(tableName)} (${colSql}) VALUES (${values.join(", ")});`);
+    }
+  }
+
+  lines.push("COMMIT;");
+  return lines.join("\n");
+}
+
+export function replaceDbContents(db, tables) {
+  if (!db) return { ok: false, error: "DB not ready." };
+
+  try {
+    const existing = listTables(db);
+    for (const tableName of existing) {
+      db.run(`DROP TABLE ${safeIdent(tableName)};`);
+    }
+
+    for (const table of Array.isArray(tables) ? tables : []) {
+      createTableFromSnapshot(db, table);
+      insertRowsFromSnapshot(db, table);
+    }
+
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Failed to rebuild workspace." };
   }
 }
 
@@ -140,15 +238,73 @@ export function dropTable(db, tableName) {
   }
 }
 
+function createTableFromSnapshot(db, table) {
+  const tableName = String(table?.name || "").trim();
+  const columns = Array.isArray(table?.columns) ? table.columns : [];
+  if (!tableName || !columns.length) return;
+
+  const createSql = String(table?.createSql || "").trim();
+  if (createSql) {
+    db.run(createSql);
+    return;
+  }
+
+  const defs = columns.map((column) => {
+    const parts = [safeIdent(column.name), String(column.type || "TEXT").trim().toUpperCase() || "TEXT"];
+    if (column.primary) parts.push("PRIMARY KEY");
+    if (column.notNull) parts.push("NOT NULL");
+    if (column.defaultValue !== undefined && column.defaultValue !== null && String(column.defaultValue) !== "") {
+      parts.push(`DEFAULT ${String(column.defaultValue)}`);
+    }
+    return parts.join(" ");
+  });
+
+  db.run(`CREATE TABLE ${safeIdent(tableName)} (${defs.join(", ")});`);
+}
+
+function insertRowsFromSnapshot(db, table) {
+  const tableName = String(table?.name || "").trim();
+  const columns = Array.isArray(table?.columns) ? table.columns : [];
+  const rows = Array.isArray(table?.rows) ? table.rows : [];
+  if (!tableName || !columns.length || !rows.length) return;
+
+  const columnNames = columns.map((column) => column.name);
+  const colSql = columnNames.map((name) => safeIdent(name)).join(", ");
+  const placeholders = columnNames.map(() => "?").join(", ");
+  const sql = `INSERT INTO ${safeIdent(tableName)} (${colSql}) VALUES (${placeholders});`;
+
+  for (const row of rows) {
+    const params = columnNames.map((name, index) => {
+      const raw = row && Object.prototype.hasOwnProperty.call(row, name) ? row[name] : null;
+      return coerceValue(raw, columns[index]?.type);
+    });
+    db.run(sql, params);
+  }
+}
+
 function safeIdent(name) {
   const s = String(name).replaceAll('"', '""');
   return `"${s}"`;
 }
 
-function coerceValue(raw, type) {
-  if (raw === null) return null;
-  const s = String(raw);
+function getCreateTableSql(db, tableName) {
+  try {
+    const safeName = String(tableName).replaceAll("'", "''");
+    const res = db.exec(
+      `SELECT sql FROM sqlite_master WHERE type='table' AND name='${safeName}' LIMIT 1;`
+    );
+    return res?.[0]?.values?.[0]?.[0] ? String(res[0].values[0][0]) : "";
+  } catch {
+    return "";
+  }
+}
 
+function coerceValue(raw, type) {
+  if (raw === null || raw === undefined) return null;
+  if (typeof raw === "number") return raw;
+  if (typeof raw === "boolean") return raw ? 1 : 0;
+
+  const s = String(raw);
   if (s.trim() === "") return null;
 
   const t = String(type || "").toUpperCase();
@@ -164,4 +320,69 @@ function coerceValue(raw, type) {
   }
 
   return s;
+}
+
+function ensureSqlEndsWithSemicolon(sql) {
+  const trimmed = String(sql || "").trim().replace(/;+\s*$/, "");
+  return `${trimmed};`;
+}
+
+function buildCreateSqlFromSnapshot(tableName, columns) {
+  const defs = (Array.isArray(columns) ? columns : [])
+    .map((column) => {
+      const name = String(column?.name || "").trim();
+      if (!name) return "";
+      const parts = [safeIdent(name), String(column?.type || "TEXT").trim().toUpperCase() || "TEXT"];
+      if (column?.primary) parts.push("PRIMARY KEY");
+      if (column?.notNull) parts.push("NOT NULL");
+      if (
+        column?.defaultValue !== undefined &&
+        column?.defaultValue !== null &&
+        String(column.defaultValue).trim() !== ""
+      ) {
+        parts.push(`DEFAULT ${String(column.defaultValue)}`);
+      }
+      return parts.join(" ");
+    })
+    .filter(Boolean);
+
+  if (!defs.length) return "";
+  return `CREATE TABLE ${safeIdent(tableName)} (${defs.join(", ")});`;
+}
+
+function toSqlLiteral(value) {
+  if (value === null || value === undefined) return "NULL";
+
+  if (typeof value === "number") {
+    return Number.isFinite(value) ? String(value) : "NULL";
+  }
+
+  if (typeof value === "boolean") {
+    return value ? "1" : "0";
+  }
+
+  if (value instanceof Uint8Array) {
+    return `X'${toHex(value)}'`;
+  }
+
+  if (value instanceof ArrayBuffer) {
+    return `X'${toHex(new Uint8Array(value))}'`;
+  }
+
+  if (typeof value === "object") {
+    try {
+      return `'${JSON.stringify(value).replaceAll("'", "''")}'`;
+    } catch {
+      return `'${String(value).replaceAll("'", "''")}'`;
+    }
+  }
+
+  return `'${String(value).replaceAll("'", "''")}'`;
+}
+
+function toHex(bytes) {
+  return Array.from(bytes || [])
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("")
+    .toUpperCase();
 }

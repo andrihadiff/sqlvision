@@ -10,7 +10,7 @@ export default function TopBar({
       <div className="brand">SQLVision</div>
 
       <div className="top-actions">
-        <span className="badge">SQLite</span>
+        <span className="btn ghost topbar-pill">SQLite</span>
 
         <button className="btn primary" onClick={onRun} disabled={runDisabled}>
           Run

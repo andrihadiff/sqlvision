@@ -15,7 +15,7 @@ export default function TableEditModal({
   tableName,
   onClose,
   onChanged,
-  onDeleteTableSetup,
+  onPersistWorkspace,
 }) {
   const [cols, setCols] = useState([]);
   const [rowsData, setRowsData] = useState({ columns: [], rows: [] });
@@ -45,20 +45,30 @@ export default function TableEditModal({
     setValues((prev) => ({ ...prev, [name]: v }));
   }
 
-  function onInsert() {
+  async function persistChanges(successMessage, failureMessage) {
+    const ok = await onPersistWorkspace?.(successMessage, failureMessage);
+    if (ok === false) {
+      setMsg(failureMessage);
+      return false;
+    }
+    setMsg(successMessage);
+    return true;
+  }
+
+  async function onInsert() {
     setMsg("");
     const res = insertRow(db, tableName, cols, values);
     if (!res.ok) {
       setMsg(res.error || "Insert failed.");
       return;
     }
-    setMsg("Row inserted ✓");
     setValues({});
     refresh();
     onChanged?.();
+    await persistChanges("Row inserted ✓", "Row inserted locally, but Mongo save failed ✗");
   }
 
-  function onDeleteRow(row, rowIndex) {
+  async function onDeleteRow(row, rowIndex) {
     setMsg("");
     let res;
 
@@ -76,9 +86,10 @@ export default function TableEditModal({
       setMsg(res.error || "Delete failed.");
       return;
     }
-    setMsg("Row deleted ✓");
+
     refresh();
     onChanged?.();
+    await persistChanges("Row deleted ✓", "Row deleted locally, but Mongo save failed ✗");
   }
 
   async function onDeleteTable() {
@@ -88,8 +99,17 @@ export default function TableEditModal({
       setMsg(res.error || "Delete table failed.");
       return;
     }
-    await onDeleteTableSetup?.(tableName);
+
     onChanged?.();
+    const ok = await onPersistWorkspace?.(
+      "Table deleted ✓",
+      "Table deleted locally, but Mongo save failed ✗"
+    );
+    if (ok === false) {
+      onClose?.();
+      return;
+    }
+
     onClose?.();
   }
 

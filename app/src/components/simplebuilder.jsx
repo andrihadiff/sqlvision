@@ -30,7 +30,7 @@ export default function SimpleBuilder({ onCreate, disabled }) {
     setCols((prev) => prev.map((c) => (c.id === id ? { ...c, ...patch } : c)));
   }
 
-  function buildSql() {
+  function buildTable() {
     const t = tableName.trim();
     if (!t) return { error: "Table name is required." };
 
@@ -48,7 +48,15 @@ export default function SimpleBuilder({ onCreate, disabled }) {
       return `${c.name} ${c.type}${pk}`;
     });
 
-    return { sql: `CREATE TABLE ${t} (\n  ${lines.join(",\n  ")}\n);`, table: t };
+    return {
+      name: t,
+      columns: cleaned.map((c) => ({
+        name: c.name,
+        type: c.type,
+        primary: Boolean(c.primary),
+      })),
+      sql: `CREATE TABLE ${t} (\n  ${lines.join(",\n  ")}\n);`,
+    };
   }
 
   async function handleCreate() {
@@ -60,24 +68,24 @@ export default function SimpleBuilder({ onCreate, disabled }) {
       return;
     }
 
-    const built = buildSql();
+    const built = buildTable();
     if (built.error) {
       setMsg(built.error);
       return;
     }
 
     try {
-      const res = await onCreate(built.table, built.sql);
+      const res = await onCreate(built);
       if (!res?.ok) {
         if (res?.outcome === "applied" || res?.outcome === "already") {
-          setMsg("Table created, but save failed (see error).");
+          setMsg("Table created locally, but Mongo save failed.");
         } else {
           setMsg("Create failed (see error).");
         }
         return;
       }
 
-      if (res.outcome === "already") setMsg("Table already exists; setup saved ✓");
+      if (res.outcome === "already") setMsg("Table already exists ✓");
       else setMsg("Table created and saved ✓");
 
       setTableName("");
@@ -92,9 +100,7 @@ export default function SimpleBuilder({ onCreate, disabled }) {
       <div className="builder-head">
         <div>
           <div className="builder-title">Simple Table Builder</div>
-          <div className="hint">
-            Create tables without writing SQL. This generates CREATE TABLE for you.
-          </div>
+          
         </div>
       </div>
 
@@ -162,7 +168,7 @@ export default function SimpleBuilder({ onCreate, disabled }) {
           </button>
         </div>
 
-        {msg && <div className="hint">{msg}</div>}
+        {msg ? <div className="hint">{msg}</div> : null}
       </div>
     </div>
   );

@@ -8,19 +8,15 @@ import TopBar from "./components/topbar";
 import QueryPanel from "./components/querypanel";
 import OutputPanel from "./components/outputpanel";
 
-import { analyseQuery } from "./logic/analysequery";
 import { formatSql } from "./logic/formatsql";
-import { createDemoDb, run } from "./logic/db";
-
-import { apiGet, apiPost, apiDelete } from "./logic/api";
+import { createWorkspaceDb, run } from "./logic/db";
+import { replaceDbContents, snapshotDb, snapshotToSql } from "./logic/schema";
+import { apiDelete, apiGet, apiPost } from "./logic/api";
+import { generateQueryBreakdown } from "./logic/stepper";
 
 const CLIENT_ID_KEY = "sqlvision:client_id";
 const SHARE_QUERY_PARAM = "share";
-
-const SQLITE_STARTER_QUERY = `SELECT name, age
-FROM students
-WHERE age >= 21
-ORDER BY age DESC;`;
+const CHALLENGE_QUERY_PARAM = "challenge";
 
 function getClientId() {
   try {
@@ -36,86 +32,120 @@ function getClientId() {
   }
 }
 
+function getUrlParam(name) {
+  try {
+    return new URLSearchParams(globalThis.location?.search || "").get(name) || "";
+  } catch {
+    return "";
+  }
+}
+
+function stripLeadingComments(sql) {
+  let text = String(sql || "").trimStart();
+
+  while (text.startsWith("--") || text.startsWith("/*")) {
+    if (text.startsWith("--")) {
+      const next = text.indexOf("\n");
+      text = next >= 0 ? text.slice(next + 1).trimStart() : "";
+      continue;
+    }
+
+    const end = text.indexOf("*/");
+    text = end >= 0 ? text.slice(end + 2).trimStart() : "";
+  }
+
+  return text;
+}
+
+function isLikelyMutatingSql(sql) {
+  const cleaned = stripLeadingComments(sql).toUpperCase();
+  if (!cleaned) return false;
+
+  return !/^(SELECT|WITH|PRAGMA|EXPLAIN)\b/.test(cleaned);
+}
+
+function buildChallengeUrl(shareKey) {
+  return `${window.location.origin}${window.location.pathname}?${CHALLENGE_QUERY_PARAM}=${encodeURIComponent(shareKey)}`;
+}
+
+function clearChallengeParamFromUrl() {
+  try {
+    const url = new URL(window.location.href);
+    url.searchParams.delete(CHALLENGE_QUERY_PARAM);
+    const next = `${url.pathname}${url.search}${url.hash}`;
+    window.history.replaceState({}, "", next);
+  } catch {
+    // Ignore URL rewrite errors.
+  }
+}
+
+function downloadTextFile(filename, text) {
+  const blob = new Blob([String(text || "")], { type: "text/sql;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
 export default function App() {
   const [db, setDb] = useState(null);
-
   const [runStatus, setRunStatus] = useState("");
-  const [planNodes, setPlanNodes] = useState([]);
-
   const [tab, setTab] = useState("results");
   const [query, setQuery] = useState("");
-
-  const [setupSql, setSetupSql] = useState("");
-  const [setupStatus, setSetupStatus] = useState("");
-  const [setupName, setSetupName] = useState("");
-
-  const [savedSetups, setSavedSetups] = useState([]);
-
+  const [workspaceTables, setWorkspaceTables] = useState([]);
+  const [schemaStatus, setSchemaStatus] = useState("");
+  const [challengeStatus, setChallengeStatus] = useState("");
   const [result, setResult] = useState({ columns: [], rows: [] });
+  const [breakdownSteps, setBreakdownSteps] = useState([]);
   const [error, setError] = useState("");
-
   const [showAbout, setShowAbout] = useState(false);
   const [showHelp, setShowHelp] = useState(false);
-
   const [dbStatus, setDbStatus] = useState("loading");
+  const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [userChallenges, setUserChallenges] = useState([]);
+  const [activeChallenge, setActiveChallenge] = useState(null);
+  const [isSharedChallengeMode, setIsSharedChallengeMode] = useState(() =>
+    Boolean(getUrlParam(CHALLENGE_QUERY_PARAM))
+  );
 
-  const clientId = getClientId();
-  const [shareKey] = useState(() => {
-    try {
-      return new URLSearchParams(globalThis.location?.search || "").get(SHARE_QUERY_PARAM) || "";
-    } catch {
-      return "";
-    }
-  });
+  const [clientId] = useState(() => getClientId());
+  const [shareKey] = useState(() => getUrlParam(SHARE_QUERY_PARAM));
+  const [challengeKey] = useState(() => getUrlParam(CHALLENGE_QUERY_PARAM));
   const restoredDbsRef = useRef(new WeakSet());
-
-  useEffect(() => {
-    setQuery((q) => (q.trim() ? q : SQLITE_STARTER_QUERY));
-  }, []);
 
   useEffect(() => {
     let alive = true;
 
-    async function loadClientSetups() {
+    async function loadWorkspace() {
       try {
-        const data = await apiGet(`/setups?clientId=${encodeURIComponent(clientId)}`);
-        if (!alive) return;
-        setSavedSetups(Array.isArray(data) ? data : []);
-      } catch {
-        if (!alive) return;
-        setSavedSetups([]);
-      }
-    }
-
-    (async () => {
-      if (shareKey) {
-        try {
+        if (shareKey) {
           const data = await apiGet(`/share/${encodeURIComponent(shareKey)}`);
           if (!alive) return;
 
-          const when = data?.updatedAt || Date.now();
-          const sharedSetups = Array.isArray(data?.setups)
-            ? data.setups.map((s, i) => ({
-                id: `share_${shareKey}_${i}`,
-                name: String(s?.name || `Shared setup ${i + 1}`),
-                sql: String(s?.sql || ""),
-                createdAt: when,
-              }))
-            : [];
-
-          setSavedSetups(sharedSetups);
-
-          const sharedQuery = String(data?.query || "").trim();
-          if (sharedQuery) setQuery(sharedQuery);
+          setWorkspaceTables(Array.isArray(data?.tables) ? data.tables : []);
+          setQuery(String(data?.query || ""));
+          setWorkspaceLoaded(true);
           return;
-        } catch (e) {
-          if (!alive) return;
-          setError(e?.message || "Failed to load shared link.");
         }
-      }
 
-      await loadClientSetups();
-    })();
+        const data = await apiGet(`/tables?clientId=${encodeURIComponent(clientId)}`);
+        if (!alive) return;
+
+        setWorkspaceTables(Array.isArray(data) ? data : []);
+        setWorkspaceLoaded(true);
+      } catch (e) {
+        if (!alive) return;
+        setWorkspaceTables([]);
+        setWorkspaceLoaded(true);
+        setError(e?.message || "Failed to load workspace tables.");
+      }
+    }
+
+    loadWorkspace();
 
     return () => {
       alive = false;
@@ -125,15 +155,57 @@ export default function App() {
   useEffect(() => {
     let alive = true;
 
+    async function loadChallenges() {
+      const minePromise = apiGet(`/challenges?clientId=${encodeURIComponent(clientId)}`);
+      const sharedPromise = challengeKey
+        ? apiGet(`/challenges/share/${encodeURIComponent(challengeKey)}`)
+        : Promise.resolve(null);
+
+      const [mineRes, sharedRes] = await Promise.allSettled([minePromise, sharedPromise]);
+      if (!alive) return;
+
+      if (mineRes.status === "fulfilled") {
+        setUserChallenges(Array.isArray(mineRes.value) ? mineRes.value : []);
+      } else {
+        setUserChallenges([]);
+      }
+
+      if (sharedRes.status === "fulfilled" && sharedRes.value) {
+        setActiveChallenge(sharedRes.value);
+        setIsSharedChallengeMode(true);
+        setTab("challenge");
+      } else if (challengeKey) {
+        setIsSharedChallengeMode(false);
+        setError(
+          sharedRes.status === "rejected"
+            ? sharedRes.reason?.message || "Failed to load challenge."
+            : "Failed to load challenge."
+        );
+        setTab("challenge");
+      } else {
+        setIsSharedChallengeMode(false);
+      }
+    }
+
+    loadChallenges();
+
+    return () => {
+      alive = false;
+    };
+  }, [clientId, challengeKey]);
+
+  useEffect(() => {
+    let alive = true;
+
     setDbStatus("loading");
     setRunStatus("Loading database...");
 
     (async () => {
       try {
-        const demo = await createDemoDb();
+        const nextDb = await createWorkspaceDb();
         if (!alive) return;
 
-        setDb(demo);
+        setDb(nextDb);
         setDbStatus("ready");
         setRunStatus("");
       } catch (e) {
@@ -151,45 +223,121 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    if (!db || !savedSetups.length) return;
+    if (!db || !workspaceLoaded) return;
     if (restoredDbsRef.current.has(db)) return;
 
-    const ordered = shareKey ? savedSetups : [...savedSetups].reverse();
-
-    for (const item of ordered) {
-      const sql = String(item?.sql || "").trim();
-      if (!sql) continue;
-      try {
-        db.run(sql);
-      } catch (e) {
-        const msg = e?.message || "";
-        if (!/already exists/i.test(msg)) {
-          console.warn("Skipped setup restore:", msg);
-        }
-      }
+    const restored = replaceDbContents(db, workspaceTables);
+    if (!restored.ok) {
+      setError(restored.error || "Failed to rebuild workspace.");
+      return;
     }
 
     restoredDbsRef.current.add(db);
-  }, [db, savedSetups, shareKey]);
+  }, [db, workspaceLoaded, workspaceTables]);
 
   function handleClearAll() {
     setQuery("");
-    setSetupSql("");
-    setSetupName("");
-    setPlanNodes([]);
     setRunStatus("");
     setTab("results");
     setResult({ columns: [], rows: [] });
+    setBreakdownSteps([]);
     setError("");
-    setSetupStatus("");
+    setSchemaStatus("");
+    setChallengeStatus("");
   }
 
   function handleFormat() {
     setQuery((q) => formatSql(q));
   }
 
-  function handleRun() {
+  async function syncWorkspace(currentDb = db) {
+    if (!currentDb) {
+      return { ok: false, error: "Database not ready yet." };
+    }
+
+    const tables = snapshotDb(currentDb);
+
+    try {
+      const docs = await apiPost("/tables/sync", { clientId, tables });
+      setWorkspaceTables(Array.isArray(docs) ? docs : []);
+      return { ok: true, tables: docs };
+    } catch (e) {
+      return { ok: false, error: e?.message || "Failed to save tables." };
+    }
+  }
+
+  async function replaceWorkspaceWithTables(tables, nextQuery = "") {
+    const normalizedTables = Array.isArray(tables) ? tables : [];
+
     setError("");
+    setSchemaStatus("");
+    setRunStatus("Loading challenge...");
+    setDbStatus("loading");
+
+    try {
+      const fresh = await createWorkspaceDb();
+      const restored = replaceDbContents(fresh, normalizedTables);
+      if (!restored.ok) {
+        throw new Error(restored.error || "Failed to load challenge workspace.");
+      }
+
+      setWorkspaceTables(normalizedTables);
+      setDb(fresh);
+      setDbStatus("ready");
+      setQuery(String(nextQuery || ""));
+      setResult({ columns: [], rows: [] });
+      setSchemaStatus("");
+      setTab("challenge");
+
+      const synced = await syncWorkspace(fresh);
+      if (!synced.ok) {
+        setError(synced.error || "Challenge loaded locally, but workspace save failed.");
+        setChallengeStatus("Challenge loaded locally, but workspace save failed ✗");
+        return false;
+      }
+
+      setChallengeStatus("Challenge loaded ✓");
+      return true;
+    } catch (e) {
+      setDbStatus("error");
+      setError(e?.message || "Failed to load challenge.");
+      setChallengeStatus("Challenge load failed ✗");
+      return false;
+    } finally {
+      setRunStatus("");
+    }
+  }
+
+  function applySqlLocally(sql) {
+    setError("");
+
+    if (!db) {
+      setError("Database not ready yet.");
+      setTab("results");
+      return "failed";
+    }
+
+    if (!String(sql || "").trim()) return "failed";
+
+    try {
+      db.run(sql);
+      return "applied";
+    } catch (e) {
+      const msg = e?.message || "";
+
+      if (/already exists/i.test(msg)) {
+        return "already";
+      }
+
+      setError(msg);
+      setTab("results");
+      return "failed";
+    }
+  }
+
+  async function handleRun() {
+    setError("");
+    setBreakdownSteps(generateQueryBreakdown(query));
 
     if (!db) {
       setError("Database not ready yet.");
@@ -197,6 +345,7 @@ export default function App() {
       return;
     }
 
+    let nextRunStatus = "";
     setRunStatus("Running query...");
 
     try {
@@ -205,166 +354,259 @@ export default function App() {
       if (execRes?.error) {
         setError(execRes.error);
         setResult({ columns: [], rows: [] });
-        setPlanNodes([]);
         setTab("results");
         return;
       }
 
       setResult(execRes);
-      const { nodes } = analyseQuery(query);
-      setPlanNodes(Array.isArray(nodes) ? nodes : []);
       setTab("results");
+
+      if (isLikelyMutatingSql(query)) {
+        const synced = await syncWorkspace(db);
+        if (!synced.ok) {
+          nextRunStatus = "Query ran, but saving tables failed.";
+          setSchemaStatus("Workspace changed locally, but Mongo save failed ✗");
+        } else {
+          setSchemaStatus("Workspace saved ✓");
+        }
+      }
     } catch (e) {
       setError(e?.message || "Run failed.");
       setTab("results");
+    } finally {
+      setRunStatus(nextRunStatus);
+    }
+  }
+
+  async function handleExportWorkspace() {
+    setError("");
+    setSchemaStatus("");
+
+    if (!db) {
+      setError("Database not ready yet.");
+      setSchemaStatus("Workspace export failed ✗");
+      return false;
+    }
+
+    try {
+      const sqlText = snapshotToSql(snapshotDb(db));
+      downloadTextFile("sqlvision-workspace.sql", sqlText);
+      setSchemaStatus("Workspace exported ✓");
+      return true;
+    } catch (e) {
+      setError(e?.message || "Failed to export workspace.");
+      setSchemaStatus("Workspace export failed ✗");
+      return false;
+    }
+  }
+
+  async function handleImportWorkspace(file) {
+    if (!file) return false;
+
+    const confirmed = window.confirm(
+      "Importing a workspace will replace your current workspace. Continue?"
+    );
+    if (!confirmed) return false;
+
+    setError("");
+    setSchemaStatus("");
+    setRunStatus("Importing workspace...");
+    setDbStatus("loading");
+
+    try {
+      const sqlText = String(await file.text() || "");
+      if (!sqlText.trim()) {
+        throw new Error("Import file is empty.");
+      }
+
+      const fresh = await createWorkspaceDb();
+      fresh.exec(sqlText);
+
+      const synced = await syncWorkspace(fresh);
+      if (!synced.ok) {
+        throw new Error(synced.error || "Imported locally, but workspace save failed.");
+      }
+
+      restoredDbsRef.current.add(fresh);
+      setDb(fresh);
+      setDbStatus("ready");
+      setTab("schema");
+      setQuery("");
+      setResult({ columns: [], rows: [] });
+      setBreakdownSteps([]);
+      setSchemaStatus("Workspace imported and saved ✓");
+      setChallengeStatus("");
+      return true;
+    } catch (e) {
+      setDbStatus(db ? "ready" : "error");
+      setError(e?.message || "Failed to import workspace.");
+      setSchemaStatus("Workspace import failed ✗");
+      return false;
     } finally {
       setRunStatus("");
     }
   }
 
-  function applySetupSql(sql) {
+  async function handleCreateTable(table) {
     setError("");
-    setSetupStatus("");
+    setSchemaStatus("");
 
-    if (!db) {
-      setError("Database not ready yet.");
-      setTab("results");
-      return "failed";
+    const outcome = applySqlLocally(table?.sql || "");
+    if (outcome === "failed") return { ok: false, outcome };
+
+    const synced = await syncWorkspace(db);
+    if (!synced.ok) {
+      setError(synced.error || "Failed to save table.");
+      setSchemaStatus("Table created locally, but Mongo save failed ✗");
+      return { ok: false, outcome };
     }
 
-    if (!sql.trim()) return "failed";
+    setSchemaStatus(outcome === "already" ? "Table already exists ✓" : "Table created and saved ✓");
+    return { ok: true, outcome };
+  }
+
+  async function handlePersistWorkspace(successMessage, failureMessage) {
+    setError("");
+
+    const synced = await syncWorkspace(db);
+    if (!synced.ok) {
+      setError(synced.error || failureMessage);
+      setSchemaStatus(failureMessage);
+      return false;
+    }
+
+    setSchemaStatus(successMessage);
+    return true;
+  }
+
+  async function handleCreateChallenge(draft) {
+    setError("");
+    setChallengeStatus("");
+
+    const title = String(draft?.title || "").trim();
+    const prompt = String(draft?.prompt || "").trim();
+    const starterQuery = String(draft?.starterQuery || "");
+    const expectedResult = {
+      columns: Array.isArray(draft?.expectedResult?.columns) ? draft.expectedResult.columns : [],
+      rows: Array.isArray(draft?.expectedResult?.rows) ? draft.expectedResult.rows : [],
+    };
+    const tables = db ? snapshotDb(db) : workspaceTables;
+
+    if (!title) {
+      setChallengeStatus("Challenge title is required.");
+      return null;
+    }
+
+    if (!prompt) {
+      setChallengeStatus("Challenge prompt is required.");
+      return null;
+    }
+
+    if (!tables.length) {
+      setChallengeStatus("Create at least one table before publishing a challenge.");
+      return null;
+    }
+
+    if (!expectedResult.columns.length) {
+      setChallengeStatus("Capture the expected output from Results before publishing.");
+      return null;
+    }
 
     try {
-      db.run(sql);
-      setSetupStatus("Setup applied ✓");
-      return "applied";
+      const doc = await apiPost("/challenges", {
+        clientId,
+        title,
+        prompt,
+        starterQuery,
+        tables,
+        expectedResult,
+      });
+
+      setUserChallenges((prev) => [doc, ...prev.filter((item) => String(item._id) !== String(doc._id))]);
+      setActiveChallenge(doc);
+      setIsSharedChallengeMode(false);
+      setChallengeStatus("Challenge created ✓");
+      setTab("challenge");
+      return doc;
     } catch (e) {
-      const msg = e?.message || "";
-
-      if (/already exists/i.test(msg)) {
-        setSetupStatus("Setup already applied ✓");
-        return "already";
-      }
-
-      setError(msg);
-      setSetupStatus("Setup failed ✗");
-      setTab("results");
-      return "failed";
+      setError(e?.message || "Failed to create challenge.");
+      setChallengeStatus("Challenge create failed ✗");
+      return null;
     }
   }
 
-  async function handleSaveSetup() {
-    setSetupStatus("");
-    setError("");
+  function handleOpenChallenge(challenge) {
+    setActiveChallenge(challenge || null);
+    setIsSharedChallengeMode(false);
+    setChallengeStatus("");
+    setTab("challenge");
+  }
 
-    const sql = setupSql.trim();
-    if (!sql) {
-      setSetupStatus("Nothing to save (Setup SQL is empty).");
+  async function handleLoadChallenge(challenge) {
+    if (!challenge) return false;
+    const ok = window.confirm(
+      "Loading this challenge will replace your current workspace. Continue?"
+    );
+    if (!ok) return false;
+    setActiveChallenge(challenge);
+    return replaceWorkspaceWithTables(challenge.tables, challenge.starterQuery || "");
+  }
+
+  function handleExitChallenge() {
+    setActiveChallenge(null);
+    setIsSharedChallengeMode(false);
+    setChallengeStatus("Exited challenge mode.");
+    setTab("challenge");
+    clearChallengeParamFromUrl();
+  }
+
+  async function handleCopyChallengeLink(challenge) {
+    const share = String(challenge?.shareKey || "").trim();
+    if (!share) {
+      setChallengeStatus("Challenge link is not available.");
       return;
     }
 
-    const name = setupName.trim() || "Untitled setup";
+    const url = buildChallengeUrl(share);
 
-    try {
-      const doc = await apiPost("/setups", { clientId, name, sql });
-      setSavedSetups((prev) => [doc, ...prev]);
-      setSetupStatus("Saved setup ✓");
-      setSetupName("");
-    } catch (e) {
-      setSetupStatus("Save failed ✗");
-      setError(e?.message || "Save failed.");
-    }
-  }
-
-  function handleApplySavedSetup(id) {
-    const item = savedSetups.find((x) => String(x._id || x.id) === String(id));
-    if (!item) return;
-
-    setSetupSql(item.sql);
-    applySetupSql(item.sql);
-  }
-
-  async function handleDeleteSavedSetup(id) {
-    const sid = String(id);
-    if (sid.startsWith("share_")) {
-      setSavedSetups((prev) => prev.filter((x) => String(x._id || x.id) !== sid));
-      return true;
-    }
-
-    try {
-      await apiDelete(`/setups/${encodeURIComponent(sid)}?clientId=${encodeURIComponent(clientId)}`);
-      setSavedSetups((prev) => prev.filter((x) => String(x._id || x.id) !== sid));
-      return true;
-    } catch (e) {
-      setError(e?.message || "Delete failed.");
-      return false;
-    }
-  }
-
-  async function handleDeleteTableSetup(tableName) {
-    const t = String(tableName || "").trim().toLowerCase();
-    if (!t) return;
-
-    const matches = savedSetups.filter(
-      (x) => String(x?.name || "").trim().toLowerCase() === t
-    );
-    if (!matches.length) return;
-
-    const failed = [];
-
-    for (const item of matches) {
-      const sid = String(item?._id || item?.id || "");
-      if (!sid || sid.startsWith("share_")) continue;
-
+    if (navigator?.clipboard?.writeText) {
       try {
-        await apiDelete(`/setups/${encodeURIComponent(sid)}?clientId=${encodeURIComponent(clientId)}`);
+        await navigator.clipboard.writeText(url);
       } catch {
-        failed.push(sid);
+        // Ignore clipboard failures and still show the URL below.
       }
     }
 
-    setSavedSetups((prev) =>
-      prev.filter((x) => String(x?.name || "").trim().toLowerCase() !== t)
-    );
-
-    if (failed.length) {
-      setError("Deleted table locally, but failed to delete some saved setup entries.");
-    }
+    window.prompt("Challenge link", url);
+    setChallengeStatus("Challenge link ready ✓");
   }
 
-  async function handleCreateTableSetup(tableName, sql) {
-    setError("");
-    setSetupStatus("");
-
-    const outcome = applySetupSql(sql);
-    if (outcome === "failed") return { ok: false, outcome };
+  async function handleDeleteChallenge(challenge) {
+    const id = String(challenge?._id || challenge?.id || "").trim();
+    if (!id) return;
 
     try {
-      const name = String(tableName || "").trim() || "Untitled";
-      const doc = await apiPost("/setups", { clientId, name, sql });
-      setSavedSetups((prev) => [doc, ...prev]);
-      setSetupStatus(outcome === "already" ? "Setup already applied ✓" : "Saved setup ✓");
-      return { ok: true, outcome };
+      await apiDelete(`/challenges/${encodeURIComponent(id)}?clientId=${encodeURIComponent(clientId)}`);
+      setUserChallenges((prev) => prev.filter((item) => String(item._id || item.id) !== id));
+      if (String(activeChallenge?._id || activeChallenge?.id || "") === id) {
+        setActiveChallenge(null);
+        setIsSharedChallengeMode(false);
+      }
+      setChallengeStatus("Challenge deleted ✓");
     } catch (e) {
-      setSetupStatus("Save failed ✗");
-      setError(e?.message || "Failed to save setup to server.");
-      return { ok: false, outcome };
+      setError(e?.message || "Failed to delete challenge.");
+      setChallengeStatus("Challenge delete failed ✗");
     }
   }
 
   async function handleShare() {
     setError("");
-    try {
-      const setups = (savedSetups || [])
-        .map((s) => ({
-          name: String(s?.name || "Untitled setup"),
-          sql: String(s?.sql || "").trim(),
-        }))
-        .filter((s) => s.sql);
 
+    try {
+      const tables = db ? snapshotDb(db) : workspaceTables;
       const res = await apiPost("/share", {
         query: String(query || ""),
-        setups,
+        tables,
       });
 
       const key = String(res?.key || "").trim();
@@ -375,7 +617,9 @@ export default function App() {
       if (navigator?.clipboard?.writeText) {
         try {
           await navigator.clipboard.writeText(url);
-        } catch {}
+        } catch {
+          // Ignore clipboard failures and still show the share URL below.
+        }
       }
 
       window.prompt("Share this link", url);
@@ -386,24 +630,26 @@ export default function App() {
 
   async function handleResetDb() {
     setError("");
-    setSetupStatus("");
+    setSchemaStatus("");
+    setChallengeStatus("");
     setRunStatus("Resetting database...");
     setDbStatus("loading");
 
     try {
-      const fresh = await createDemoDb();
+      const fresh = await createWorkspaceDb();
+      setWorkspaceTables([]);
       setDb(fresh);
       setDbStatus("ready");
-
       setResult({ columns: [], rows: [] });
-      setPlanNodes([]);
       setTab("results");
 
-      setSetupStatus("Database reset ✓");
+      const synced = await apiPost("/tables/sync", { clientId, tables: [] });
+      setWorkspaceTables(Array.isArray(synced) ? synced : []);
+      setSchemaStatus("Database reset ✓");
     } catch (e) {
       setDbStatus("error");
       setError(e?.message || "Failed to reset database.");
-      setSetupStatus("Database reset failed ✗");
+      setSchemaStatus("Database reset failed ✗");
     } finally {
       setRunStatus("");
     }
@@ -434,22 +680,27 @@ export default function App() {
           db={db}
           tab={tab}
           setTab={setTab}
-          planNodes={planNodes}
           result={result}
+          breakdownSteps={breakdownSteps}
           error={error}
-          setupSql={setupSql}
-          setSetupSql={setSetupSql}
-          setupStatus={setupStatus}
-          setupName={setupName}
-          setSetupName={setSetupName}
-          onSaveSetup={handleSaveSetup}
-          savedSetups={savedSetups}
-          onApplySavedSetup={handleApplySavedSetup}
-          onDeleteSavedSetup={handleDeleteSavedSetup}
-          onDeleteTableSetup={handleDeleteTableSetup}
+          workspaceTables={workspaceTables}
+          schemaStatus={schemaStatus}
+          challengeStatus={challengeStatus}
+          isSharedChallengeLink={isSharedChallengeMode}
+          userChallenges={userChallenges}
+          activeChallenge={activeChallenge}
           onResetDb={handleResetDb}
           dbReady={!!db}
-          onCreateTableSetup={handleCreateTableSetup}
+          onCreateTable={handleCreateTable}
+          onPersistWorkspace={handlePersistWorkspace}
+          onCreateChallenge={handleCreateChallenge}
+          onOpenChallenge={handleOpenChallenge}
+          onLoadChallenge={handleLoadChallenge}
+          onExitChallenge={handleExitChallenge}
+          onCopyChallengeLink={handleCopyChallengeLink}
+          onDeleteChallenge={handleDeleteChallenge}
+          onExportWorkspace={handleExportWorkspace}
+          onImportWorkspace={handleImportWorkspace}
         />
       </main>
 
