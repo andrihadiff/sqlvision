@@ -247,14 +247,16 @@ export default function ChallengePanel({
 
             <div className="challenge-expected-row">
               <div className="hint">Expected output: {expectedSummary}</div>
-              <button className="btn" onClick={captureExpectedOutput}>
-                Use Current Results as Expected Output
-              </button>
+              <div className="challenge-expected-action">
+                <button className="btn challenge-form-btn" onClick={captureExpectedOutput}>
+                  Use Current Results as Expected Output
+                </button>
+              </div>
             </div>
 
             {draftStatus ? <div className="hint">{draftStatus}</div> : null}
 
-            <button className="btn primary" onClick={handleCreateChallenge}>
+            <button className="btn primary challenge-form-btn" onClick={handleCreateChallenge}>
               Create From Current Workspace
             </button>
           </div>

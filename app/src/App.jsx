@@ -708,7 +708,14 @@ export default function App() {
       <HelpModal open={showHelp} onClose={() => setShowHelp(false)} />
 
       <footer className="footer">
-        <span>© {new Date().getFullYear()} SQLVision · UI skeleton</span>
+        © 2026 SQLVision · Built by Andri Hadiff Bin Mahadi ·
+        <a
+          href="https://git.cs.bham.ac.uk/projects-2025-26/axb1968"
+          target="_blank"
+          rel="noopener noreferrer"
+        >
+          Source
+        </a>
       </footer>
     </div>
   );

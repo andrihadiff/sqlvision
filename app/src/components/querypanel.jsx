@@ -15,14 +15,11 @@ export default function QueryPanel({
         <span className="badge">Design mode</span>
       </div>
 
-      <div className="hint">
-        DB:{" "}
-        {dbStatus === "ready"
-          ? "Ready ✓"
-          : dbStatus === "error"
-          ? "Error ✗"
-          : "Loading…"}
-      </div>
+      {dbStatus !== "ready" && (
+        <div className="hint">
+          DB: {dbStatus === "error" ? "Error ✗" : "Loading…"}
+        </div>
+      )}
 
       <textarea
         className="editor-input"
@@ -48,7 +45,6 @@ export default function QueryPanel({
       </div>
 
       {runStatus && <div className="hint">{runStatus}</div>}
-      {!dbReady && <div className="hint">Loading database...</div>}
     </section>
   );
 }

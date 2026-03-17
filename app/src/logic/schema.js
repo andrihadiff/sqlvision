@@ -216,6 +216,60 @@ export function deleteRowByPk(db, tableName, pkName, pkValue) {
   }
 }
 
+export function updateRowByPk(db, tableName, cols, pkName, pkValue, valuesByName) {
+  if (!db || !tableName) return { ok: false, error: "DB not ready." };
+  if (!pkName) return { ok: false, error: "No primary key found." };
+
+  const editableCols = (cols || []).filter((c) => {
+    if (!c?.name || c.name === pkName) return false;
+    return Object.prototype.hasOwnProperty.call(valuesByName || {}, c.name);
+  });
+
+  if (!editableCols.length) {
+    return { ok: false, error: "No editable values to update." };
+  }
+
+  const setSql = editableCols.map((c) => `${safeIdent(c.name)} = ?`).join(", ");
+  const params = editableCols.map((c) => coerceValue(valuesByName?.[c.name], c.type));
+
+  try {
+    db.run(
+      `UPDATE ${safeIdent(tableName)} SET ${setSql} WHERE ${safeIdent(pkName)} = ?;`,
+      [...params, pkValue]
+    );
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Update failed." };
+  }
+}
+
+export function updateRowByRowid(db, tableName, cols, rowid, valuesByName) {
+  if (!db || !tableName) return { ok: false, error: "DB not ready." };
+  if (rowid === undefined || rowid === null) return { ok: false, error: "Row ID missing." };
+
+  const editableCols = (cols || []).filter((c) => {
+    if (!c?.name) return false;
+    return Object.prototype.hasOwnProperty.call(valuesByName || {}, c.name);
+  });
+
+  if (!editableCols.length) {
+    return { ok: false, error: "No editable values to update." };
+  }
+
+  const setSql = editableCols.map((c) => `${safeIdent(c.name)} = ?`).join(", ");
+  const params = editableCols.map((c) => coerceValue(valuesByName?.[c.name], c.type));
+
+  try {
+    db.run(
+      `UPDATE ${safeIdent(tableName)} SET ${setSql} WHERE rowid = ?;`,
+      [...params, rowid]
+    );
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Update failed." };
+  }
+}
+
 export function deleteRowByRowid(db, tableName, rowid) {
   if (!db || !tableName) return { ok: false, error: "DB not ready." };
   if (rowid === undefined || rowid === null) return { ok: false, error: "Row ID missing." };

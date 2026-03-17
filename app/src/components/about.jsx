@@ -4,18 +4,25 @@ export default function AboutModal({ open, onClose }) {
   return (
     <div className="modal-backdrop" onClick={onClose}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
-        <h2>How SQLVision Works</h2>
+        <h2>About SQLVision</h2>
 
-        <ol>
-          <li><strong>Query Input:</strong> Write a SQL query.</li>
-          <li><strong>Logical Parsing:</strong> Identify SQL operations.</li>
-          <li><strong>Execution Steps:</strong> Break query into stages.</li>
-          <li><strong>Visual Plan:</strong> Display logical plan.</li>
-          <li><strong>Result Preview:</strong> Show final output.</li>
-        </ol>
+        <p>
+          SQLVision is an interactive SQL learning and experimentation environment designed for
+          hands-on practice. It provides a safe sandbox for writing, testing, and understanding SQL
+          without setting up a local database server.
+        </p>
 
-        <p className="muted">
-          This project focuses on the conceptual flow of SQL queries.
+        <p>
+          Queries run locally in the browser using SQLite through sql.js. Workspace state, challenge
+          definitions, and shared snapshots are persisted through the backend API. Each browser
+          session is identified with a generated client ID, so users can keep their own data without
+          creating an account.
+        </p>
+
+        <p>
+          The platform also supports challenge creation and sharing. The Breakdown tab provides a
+          simplified logical explanation of the most recent query for learning support. It is an
+          educational aid and not a true database execution plan.
         </p>
 
         <button className="btn primary" onClick={onClose}>

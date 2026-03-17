@@ -6,6 +6,8 @@ import {
   insertRow,
   deleteRowByPk,
   deleteRowByRowid,
+  updateRowByPk,
+  updateRowByRowid,
   dropTable,
 } from "../logic/schema";
 
@@ -20,6 +22,8 @@ export default function TableEditModal({
   const [cols, setCols] = useState([]);
   const [rowsData, setRowsData] = useState({ columns: [], rows: [] });
   const [values, setValues] = useState({});
+  const [editRowIndex, setEditRowIndex] = useState(null);
+  const [editValues, setEditValues] = useState({});
   const [msg, setMsg] = useState("");
 
   const pkName = useMemo(() => getPrimaryKeyColumn(cols), [cols]);
@@ -36,6 +40,8 @@ export default function TableEditModal({
     if (!open) return;
     setMsg("");
     setValues({});
+    setEditRowIndex(null);
+    setEditValues({});
     refresh();
   }, [open, db, tableName]);
 
@@ -43,6 +49,10 @@ export default function TableEditModal({
 
   function setVal(name, v) {
     setValues((prev) => ({ ...prev, [name]: v }));
+  }
+
+  function setEditVal(name, v) {
+    setEditValues((prev) => ({ ...prev, [name]: v }));
   }
 
   async function persistChanges(successMessage, failureMessage) {
@@ -92,6 +102,52 @@ export default function TableEditModal({
     await persistChanges("Row deleted ✓", "Row deleted locally, but Mongo save failed ✗");
   }
 
+  function onStartEditRow(row, rowIndex) {
+    if (editRowIndex !== null && editRowIndex !== rowIndex) return;
+
+    const next = {};
+    rowsData.columns.forEach((columnName, index) => {
+      const value = row[index];
+      next[columnName] = value === null || value === undefined ? "" : String(value);
+    });
+
+    setEditValues(next);
+    setEditRowIndex(rowIndex);
+    setMsg("");
+  }
+
+  function onCancelEditRow() {
+    setEditRowIndex(null);
+    setEditValues({});
+    setMsg("");
+  }
+
+  async function onSaveEditRow(row, rowIndex) {
+    setMsg("");
+    let res;
+
+    if (pkName) {
+      const idx = rowsData.columns.indexOf(pkName);
+      const pkVal = idx >= 0 ? row[idx] : null;
+      res = updateRowByPk(db, tableName, cols, pkName, pkVal, editValues);
+    } else {
+      const rowid =
+        Array.isArray(rowsData.rowids) && rowIndex >= 0 ? rowsData.rowids[rowIndex] : undefined;
+      res = updateRowByRowid(db, tableName, cols, rowid, editValues);
+    }
+
+    if (!res.ok) {
+      setMsg(res.error || "Update failed.");
+      return;
+    }
+
+    setEditRowIndex(null);
+    setEditValues({});
+    refresh();
+    onChanged?.();
+    await persistChanges("Row updated ✓", "Row updated locally, but Mongo save failed ✗");
+  }
+
   async function onDeleteTable() {
     setMsg("");
     const res = dropTable(db, tableName);
@@ -114,6 +170,7 @@ export default function TableEditModal({
   }
 
   const canDeleteRow = Boolean(pkName || (Array.isArray(rowsData.rowids) && rowsData.rowids.length));
+  const canEditRow = canDeleteRow;
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
@@ -128,7 +185,7 @@ export default function TableEditModal({
         </div>
 
         <div className="hint" style={{ marginTop: 8 }}>
-          Primary key: {pkName ? pkName : "None (using rowid fallback for delete)"}
+          Primary key: {pkName ? pkName : "None (using rowid fallback for row actions)"}
         </div>
 
         <div style={{ marginTop: 14 }}>
@@ -190,18 +247,68 @@ export default function TableEditModal({
                 {rowsData.rows?.length ? (
                   rowsData.rows.map((r, i) => (
                     <tr key={i}>
-                      {r.map((v, j) => (
-                        <td key={j}>{v === null || v === undefined ? "" : String(v)}</td>
-                      ))}
+                      {r.map((v, j) => {
+                        const columnName = rowsData.columns[j];
+                        const isEditing = editRowIndex === i;
+                        const isPkColumn = Boolean(pkName && columnName === pkName);
+                        if (!isEditing) {
+                          return <td key={j}>{v === null || v === undefined ? "" : String(v)}</td>;
+                        }
+
+                        return (
+                          <td key={j}>
+                            <input
+                              className="builder-input"
+                              value={editValues[columnName] ?? ""}
+                              onChange={(e) => setEditVal(columnName, e.target.value)}
+                              readOnly={isPkColumn}
+                              disabled={isPkColumn}
+                            />
+                          </td>
+                        );
+                      })}
                       <td>
-                        <button
-                          className="btn ghost"
-                          onClick={() => onDeleteRow(r, i)}
-                          disabled={!canDeleteRow}
-                          title={!canDeleteRow ? "Delete not available for this table" : "Delete row"}
-                        >
-                          Delete
-                        </button>
+                        {editRowIndex === i ? (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button className="btn" onClick={() => onSaveEditRow(r, i)}>
+                              Save
+                            </button>
+                            <button className="btn ghost" onClick={onCancelEditRow}>
+                              Cancel
+                            </button>
+                          </div>
+                        ) : (
+                          <div style={{ display: "flex", gap: 8 }}>
+                            <button
+                              className="btn ghost"
+                              onClick={() => onStartEditRow(r, i)}
+                              disabled={!canEditRow || editRowIndex !== null}
+                              title={
+                                !canEditRow
+                                  ? "Edit not available for this table"
+                                  : editRowIndex !== null
+                                  ? "Finish current row edit first"
+                                  : "Edit row"
+                              }
+                            >
+                              Edit
+                            </button>
+                            <button
+                              className="btn ghost"
+                              onClick={() => onDeleteRow(r, i)}
+                              disabled={!canDeleteRow || editRowIndex !== null}
+                              title={
+                                !canDeleteRow
+                                  ? "Delete not available for this table"
+                                  : editRowIndex !== null
+                                  ? "Finish current row edit first"
+                                  : "Delete row"
+                              }
+                            >
+                              Delete
+                            </button>
+                          </div>
+                        )}
                       </td>
                     </tr>
                   ))

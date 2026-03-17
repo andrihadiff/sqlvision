@@ -109,8 +109,22 @@ body{
 .placeholder-table .header .cell{height:24px; background:rgba(255,255,255,.12)}
 
 .footer{
-  border-top:1px solid var(--line); padding:12px 20px; color:var(--muted);
-  display:flex; justify-content:center;
+  border-top:1px solid var(--line);
+  padding:10px 12px;
+  color:var(--muted);
+  display:flex;
+  justify-content:center;
+  align-items:center;
+  text-align:center;
+  font-size:12px;
+  opacity:.8;
+}
+
+.footer a{
+  color:inherit;
+  margin-left:4px;
+  text-decoration:underline;
+  text-underline-offset:2px;
 }
 
 /* If you keep the footer, it will always be visible at the bottom (static page) */
@@ -487,11 +501,18 @@ body{
 }
 
 .challenge-expected-row{
+  display:grid;
+  gap:10px;
+}
+
+.challenge-expected-action{
   display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  flex-wrap:wrap;
+  justify-content:center;
+}
+
+.challenge-form-btn{
+  width:100%;
+  justify-content:center;
 }
   
 .advanced-wrap{
