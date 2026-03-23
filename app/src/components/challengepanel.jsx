@@ -232,7 +232,7 @@ export default function ChallengePanel({
             <textarea
               className="challenge-textarea"
               rows={5}
-              placeholder="Write the prompt, for example: Return the top 3 customers by total order value."
+              placeholder="Challenge description."
               value={prompt}
               onChange={(e) => updateDraft({ prompt: e.target.value })}
             />

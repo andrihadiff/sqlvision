@@ -24,7 +24,7 @@ export default function QueryPanel({
       <textarea
         className="editor-input"
         rows={14}
-        placeholder="Write a query here (SELECT/INSERT/UPDATE/DELETE/DDL)."
+        placeholder="Write a query here."
         value={query}
         onChange={(e) => setQuery(e.target.value)}
       />
