@@ -255,7 +255,7 @@ async function generateChallengeKey() {
   }
 }
 
-const clientDistPath = path.resolve(__dirname, "./app/public");
+const clientDistPath = path.resolve(__dirname, "./app");
 
 console.log("Serving frontend from:", clientDistPath);
 
