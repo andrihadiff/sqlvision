@@ -3,11 +3,16 @@ import cors from "cors";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import crypto from "crypto";
+import path from "path";
+import { fileURLToPath } from "url";
 import WorkspaceTable from "./models/table.js";
 import Share from "./models/share.js";
 import Challenge from "./models/challenge.js";
 
 dotenv.config();
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 const app = express();
 app.use(cors());
@@ -17,7 +22,7 @@ const PORT = process.env.PORT || 3001;
 const MONGO_URI = process.env.MONGO_URI;
 
 if (!MONGO_URI) {
-  console.error("Missing MONGO_URI in server/.env");
+  console.error("Missing MONGO_URI");
   process.exit(1);
 }
 
@@ -250,6 +255,20 @@ async function generateChallengeKey() {
   }
 }
 
+const clientDistPath = path.resolve(__dirname, "../app/dist");
+
+console.log("Serving frontend from:", clientDistPath);
+
+app.use(express.static(clientDistPath));
+
+app.get("/", (req, res) => {
+  res.sendFile(path.join(clientDistPath, "index.html"));
+});
+
+app.get(/^(?!\/api).*/, (req, res) => {
+  res.sendFile(path.join(clientDistPath, "index.html"));
+});
+
 app.listen(PORT, () => {
-  console.log(`Server running on http://localhost:${PORT}`);
+  console.log(`Server running on port ${PORT}`);
 });
