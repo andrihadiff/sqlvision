@@ -25,9 +25,9 @@ export default function OutputPanel({
   onCreateTable,
   onPersistWorkspace,
   onCreateChallenge,
-  onOpenChallenge,
   onLoadChallenge,
   onExitChallenge,
+  onReturnToWorkspace,
   onCopyChallengeLink,
   onDeleteChallenge,
   onExportWorkspace,
@@ -130,7 +130,7 @@ export default function OutputPanel({
               ? "Breakdown"
               : t === "challenge"
               ? "Challenge"
-              : "Schema"}
+              : "Data"}
           </button>
         ))}
       </div>
@@ -156,9 +156,9 @@ export default function OutputPanel({
             userChallenges={userChallenges}
             draft={challengeDraft}
             onCreateChallenge={onCreateChallenge}
-            onOpenChallenge={onOpenChallenge}
             onLoadChallenge={onLoadChallenge}
             onExitChallenge={onExitChallenge}
+            onReturnToWorkspace={onReturnToWorkspace}
             onCopyChallengeLink={onCopyChallengeLink}
             onDeleteChallenge={onDeleteChallenge}
             onUpdateDraft={updateChallengeDraft}
@@ -187,7 +187,7 @@ export default function OutputPanel({
           <>
             <div className="schema-header">
               <h3 className="schema-title">
-                Schema & Data
+                Data
               </h3>
 
               <div className="workspace-actions">

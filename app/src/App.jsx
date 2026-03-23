@@ -17,6 +17,7 @@ import { generateQueryBreakdown } from "./logic/stepper";
 const CLIENT_ID_KEY = "sqlvision:client_id";
 const SHARE_QUERY_PARAM = "share";
 const CHALLENGE_QUERY_PARAM = "challenge";
+const CHALLENGE_BACKUP_KEY = "sqlvision:challenge_backup";
 
 function getClientId() {
   try {
@@ -79,6 +80,54 @@ function clearChallengeParamFromUrl() {
   }
 }
 
+function normalizeTables(tables) {
+  return Array.isArray(tables) ? tables : [];
+}
+
+function normalizeResultSnapshot(result) {
+  return {
+    columns: Array.isArray(result?.columns) ? [...result.columns] : [],
+    rows: Array.isArray(result?.rows)
+      ? result.rows.map((row) => (Array.isArray(row) ? [...row] : []))
+      : [],
+  };
+}
+
+function loadChallengeBackup() {
+  try {
+    const raw = sessionStorage.getItem(CHALLENGE_BACKUP_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw);
+    if (!parsed || typeof parsed !== "object") return null;
+
+    return {
+      query: String(parsed.query || ""),
+      tables: normalizeTables(parsed.tables),
+      result: normalizeResultSnapshot(parsed.result),
+      breakdownSteps: Array.isArray(parsed.breakdownSteps) ? parsed.breakdownSteps.map(String) : [],
+      tab: typeof parsed.tab === "string" ? parsed.tab : "results",
+    };
+  } catch {
+    return null;
+  }
+}
+
+function saveChallengeBackup(backup) {
+  try {
+    sessionStorage.setItem(CHALLENGE_BACKUP_KEY, JSON.stringify(backup || null));
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
+function clearChallengeBackupStorage() {
+  try {
+    sessionStorage.removeItem(CHALLENGE_BACKUP_KEY);
+  } catch {
+    // Ignore storage failures.
+  }
+}
+
 function downloadTextFile(filename, text) {
   const blob = new Blob([String(text || "")], { type: "text/sql;charset=utf-8" });
   const url = URL.createObjectURL(blob);
@@ -111,11 +160,15 @@ export default function App() {
   const [isSharedChallengeMode, setIsSharedChallengeMode] = useState(() =>
     Boolean(getUrlParam(CHALLENGE_QUERY_PARAM))
   );
+  const [challengeWorkspaceBackup, setChallengeWorkspaceBackup] = useState(() =>
+    loadChallengeBackup()
+  );
 
   const [clientId] = useState(() => getClientId());
   const [shareKey] = useState(() => getUrlParam(SHARE_QUERY_PARAM));
   const [challengeKey] = useState(() => getUrlParam(CHALLENGE_QUERY_PARAM));
   const restoredDbsRef = useRef(new WeakSet());
+  const autoLoadedChallengeKeyRef = useRef("");
 
   useEffect(() => {
     let alive = true;
@@ -195,6 +248,36 @@ export default function App() {
   }, [clientId, challengeKey]);
 
   useEffect(() => {
+    if (!challengeKey || !isSharedChallengeMode) return;
+    if (!activeChallenge) return;
+    if (!workspaceLoaded) return;
+    if (dbStatus !== "ready") return;
+    if (autoLoadedChallengeKeyRef.current === challengeKey) return;
+
+    let alive = true;
+    autoLoadedChallengeKeyRef.current = challengeKey;
+
+    (async () => {
+      captureWorkspaceBackup();
+      const loaded = await replaceWorkspaceWithTables(
+        activeChallenge.tables,
+        activeChallenge.starterQuery || ""
+      );
+
+      if (!alive) return;
+      if (loaded) {
+        setChallengeStatus("Shared challenge loaded ✓");
+      } else {
+        autoLoadedChallengeKeyRef.current = "";
+      }
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [challengeKey, isSharedChallengeMode, activeChallenge, workspaceLoaded, dbStatus]);
+
+  useEffect(() => {
     let alive = true;
 
     setDbStatus("loading");
@@ -234,6 +317,30 @@ export default function App() {
 
     restoredDbsRef.current.add(db);
   }, [db, workspaceLoaded, workspaceTables]);
+
+  useEffect(() => {
+    autoLoadedChallengeKeyRef.current = "";
+  }, [challengeKey]);
+
+  function captureWorkspaceBackup() {
+    const canSnapshotDb = db && restoredDbsRef.current.has(db);
+    const backup = {
+      query: String(query || ""),
+      tables: normalizeTables(canSnapshotDb ? snapshotDb(db) : workspaceTables),
+      result: normalizeResultSnapshot(result),
+      breakdownSteps: Array.isArray(breakdownSteps) ? [...breakdownSteps] : [],
+      tab: typeof tab === "string" ? tab : "results",
+    };
+
+    setChallengeWorkspaceBackup(backup);
+    saveChallengeBackup(backup);
+    return backup;
+  }
+
+  function clearChallengeWorkspaceBackup() {
+    setChallengeWorkspaceBackup(null);
+    clearChallengeBackupStorage();
+  }
 
   function handleClearAll() {
     setQuery("");
@@ -535,13 +642,6 @@ export default function App() {
     }
   }
 
-  function handleOpenChallenge(challenge) {
-    setActiveChallenge(challenge || null);
-    setIsSharedChallengeMode(false);
-    setChallengeStatus("");
-    setTab("challenge");
-  }
-
   async function handleLoadChallenge(challenge) {
     if (!challenge) return false;
     const ok = window.confirm(
@@ -550,6 +650,58 @@ export default function App() {
     if (!ok) return false;
     setActiveChallenge(challenge);
     return replaceWorkspaceWithTables(challenge.tables, challenge.starterQuery || "");
+  }
+
+  async function handleReturnToWorkspace() {
+    const backup = challengeWorkspaceBackup || loadChallengeBackup();
+    const restorePoint = backup || {
+      query: "",
+      tables: [],
+      result: { columns: [], rows: [] },
+      breakdownSteps: [],
+      tab: "results",
+    };
+
+    setError("");
+    setRunStatus("Restoring workspace...");
+    setDbStatus("loading");
+
+    try {
+      const fresh = await createWorkspaceDb();
+      const restored = replaceDbContents(fresh, normalizeTables(restorePoint.tables));
+      if (!restored.ok) {
+        throw new Error(restored.error || "Failed to restore previous workspace.");
+      }
+
+      const synced = await syncWorkspace(fresh);
+      if (!synced.ok) {
+        throw new Error(synced.error || "Workspace restored locally, but save failed.");
+      }
+
+      restoredDbsRef.current.add(fresh);
+      setDb(fresh);
+      setDbStatus("ready");
+      setWorkspaceTables(normalizeTables(synced.tables));
+      setQuery(String(restorePoint.query || ""));
+      setResult(normalizeResultSnapshot(restorePoint.result));
+      setBreakdownSteps(
+        Array.isArray(restorePoint.breakdownSteps) ? restorePoint.breakdownSteps.map(String) : []
+      );
+      setTab(typeof restorePoint.tab === "string" ? restorePoint.tab : "results");
+      setActiveChallenge(null);
+      setIsSharedChallengeMode(false);
+      setChallengeStatus(backup ? "Returned to your workspace ✓" : "No saved workspace found. Started fresh ✓");
+      clearChallengeWorkspaceBackup();
+      clearChallengeParamFromUrl();
+      return true;
+    } catch (e) {
+      setDbStatus(db ? "ready" : "error");
+      setError(e?.message || "Failed to restore previous workspace.");
+      setChallengeStatus("Workspace restore failed ✗");
+      return false;
+    } finally {
+      setRunStatus("");
+    }
   }
 
   function handleExitChallenge() {
@@ -694,9 +846,9 @@ export default function App() {
           onCreateTable={handleCreateTable}
           onPersistWorkspace={handlePersistWorkspace}
           onCreateChallenge={handleCreateChallenge}
-          onOpenChallenge={handleOpenChallenge}
           onLoadChallenge={handleLoadChallenge}
           onExitChallenge={handleExitChallenge}
+          onReturnToWorkspace={handleReturnToWorkspace}
           onCopyChallengeLink={handleCopyChallengeLink}
           onDeleteChallenge={handleDeleteChallenge}
           onExportWorkspace={handleExportWorkspace}

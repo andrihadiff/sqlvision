@@ -9,9 +9,9 @@ export default function ChallengePanel({
   userChallenges,
   draft,
   onCreateChallenge,
-  onOpenChallenge,
   onLoadChallenge,
   onExitChallenge,
+  onReturnToWorkspace,
   onCopyChallengeLink,
   onDeleteChallenge,
   onUpdateDraft,
@@ -136,15 +136,23 @@ export default function ChallengePanel({
               <div className="hint">Challenge prompt</div>
             </div>
             <div className="challenge-card-actions">
-              <button className="btn ghost" onClick={onExitChallenge} title="Exit challenge mode">
-                Exit Challenge
-              </button>
-              <button className="btn" onClick={() => onCopyChallengeLink(activeChallenge)}>
-                Copy Link
-              </button>
-              <button className="btn primary" onClick={() => onLoadChallenge(activeChallenge)}>
-                Load Into Workspace
-              </button>
+              {isSharedChallengeLink ? (
+                <button className="btn primary" onClick={onReturnToWorkspace}>
+                  Return to My Workspace
+                </button>
+              ) : (
+                <>
+                  <button className="btn ghost" onClick={onExitChallenge} title="Exit challenge mode">
+                    Exit Challenge
+                  </button>
+                  <button className="btn" onClick={() => onCopyChallengeLink(activeChallenge)}>
+                    Copy Link
+                  </button>
+                  <button className="btn primary" onClick={() => onLoadChallenge(activeChallenge)}>
+                    Load Into Workspace
+                  </button>
+                </>
+              )}
             </div>
           </div>
 
@@ -161,9 +169,11 @@ export default function ChallengePanel({
             <div className="hint">Expected output: {activeExpectedSummary}</div>
           </div>
 
-          <div className="challenge-warning">
-            Loading this challenge will replace your current workspace.
-          </div>
+          {!isSharedChallengeLink ? (
+            <div className="challenge-warning">
+              Loading this challenge will replace your current workspace.
+            </div>
+          ) : null}
 
           <div className="challenge-detail-block">
             <div className="challenge-check-head">
@@ -212,6 +222,13 @@ export default function ChallengePanel({
               ? "This shared challenge could not be loaded."
               : "Publish the current workspace as a challenge and send it with a unique link."}
           </div>
+          {isSharedChallengeLink ? (
+            <div className="challenge-card-actions" style={{ marginTop: 12 }}>
+              <button className="btn primary" onClick={onReturnToWorkspace}>
+                Return to My Workspace
+              </button>
+            </div>
+          ) : null}
         </div>
       )}
 
@@ -219,7 +236,7 @@ export default function ChallengePanel({
         <div className="challenge-card">
           <div className="challenge-kicker">Creator Tools</div>
           <h3 className="section-title" style={{ marginBottom: 4 }}>Create New Challenge</h3>
-          <div className="hint">Build tables in Schema, run the correct query, capture the expected output, then publish.</div>
+          <div className="hint">Build tables in Data, run the correct query, capture the expected output, then publish.</div>
 
           <div className="challenge-form">
             <input
@@ -277,14 +294,8 @@ export default function ChallengePanel({
                   </div>
 
                   <div className="setup-item-actions">
-                    <button className="btn ghost" onClick={() => onOpenChallenge(challenge)}>
-                      Open
-                    </button>
                     <button className="btn ghost" onClick={() => onCopyChallengeLink(challenge)}>
                       Copy Link
-                    </button>
-                    <button className="btn" onClick={() => onLoadChallenge(challenge)}>
-                      Load
                     </button>
                     <button className="btn ghost" onClick={() => onDeleteChallenge(challenge)}>
                       Delete
