@@ -69,6 +69,19 @@ export function getTableRows(db, tableName, limit = 200) {
   }
 }
 
+export function getTableRowCount(db, tableName) {
+  if (!db || !tableName) return null;
+  try {
+    const res = db.exec(`SELECT COUNT(*) FROM ${safeIdent(tableName)};`);
+    if (!res.length) return 0;
+    const value = res?.[0]?.values?.[0]?.[0];
+    const count = Number(value);
+    return Number.isFinite(count) ? count : 0;
+  } catch {
+    return null;
+  }
+}
+
 export function snapshotTable(db, tableName) {
   const columns = getTableColumns(db, tableName);
   if (!columns.length) return null;
@@ -289,6 +302,40 @@ export function dropTable(db, tableName) {
     return { ok: true };
   } catch (e) {
     return { ok: false, error: e?.message || "Drop failed." };
+  }
+}
+
+export function renameTable(db, oldName, nextName) {
+  if (!db) return { ok: false, error: "DB not ready." };
+
+  const from = String(oldName || "").trim();
+  const to = String(nextName || "").trim();
+
+  if (!from) return { ok: false, error: "Current table name is missing." };
+  if (!to) return { ok: false, error: "Table name cannot be empty." };
+  if (from === to) return { ok: true, unchanged: true };
+  if (to.includes("\u0000")) return { ok: false, error: "Table name is invalid." };
+
+  const existing = listTables(db);
+  const lowerTo = to.toLowerCase();
+  const lowerFrom = from.toLowerCase();
+
+  if (lowerTo === lowerFrom) {
+    return { ok: true, unchanged: true };
+  }
+
+  const hasDuplicate = existing.some(
+    (name) => String(name || "").toLowerCase() === lowerTo
+  );
+  if (hasDuplicate) {
+    return { ok: false, error: `A table named "${to}" already exists.` };
+  }
+
+  try {
+    db.run(`ALTER TABLE ${safeIdent(from)} RENAME TO ${safeIdent(to)};`);
+    return { ok: true };
+  } catch (e) {
+    return { ok: false, error: e?.message || "Rename failed." };
   }
 }
 

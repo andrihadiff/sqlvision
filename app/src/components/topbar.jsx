@@ -16,7 +16,7 @@ export default function TopBar({
           Run
         </button>
 
-        <button className="btn" onClick={onShare} title="Share this snippet">
+        <button className="btn" onClick={onShare}>
           Share
         </button>
 

@@ -572,17 +572,22 @@ export default function App() {
     return { ok: true, outcome };
   }
 
-  async function handlePersistWorkspace(successMessage, failureMessage) {
+  async function handlePersistWorkspace(successMessage, failureMessage, options = {}) {
     setError("");
+    const silentSchemaStatus = Boolean(options?.silentSchemaStatus);
 
     const synced = await syncWorkspace(db);
     if (!synced.ok) {
       setError(synced.error || failureMessage);
-      setSchemaStatus(failureMessage);
+      if (!silentSchemaStatus) {
+        setSchemaStatus(failureMessage);
+      }
       return false;
     }
 
-    setSchemaStatus(successMessage);
+    if (!silentSchemaStatus) {
+      setSchemaStatus(successMessage);
+    }
     return true;
   }
 

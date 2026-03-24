@@ -151,7 +151,6 @@ export default function SimpleBuilder({ onCreate, disabled }) {
                 className="btn ghost"
                 onClick={() => removeCol(c.id)}
                 disabled={disabled || cols.length <= 1}
-                title={cols.length <= 1 ? "Keep at least one column" : "Remove column"}
               >
                 ✕
               </button>

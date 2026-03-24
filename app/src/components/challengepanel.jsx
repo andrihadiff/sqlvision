@@ -142,7 +142,7 @@ export default function ChallengePanel({
                 </button>
               ) : (
                 <>
-                  <button className="btn ghost" onClick={onExitChallenge} title="Exit challenge mode">
+                  <button className="btn ghost" onClick={onExitChallenge}>
                     Exit Challenge
                   </button>
                   <button className="btn" onClick={() => onCopyChallengeLink(activeChallenge)}>

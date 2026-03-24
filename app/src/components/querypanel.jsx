@@ -34,7 +34,6 @@ export default function QueryPanel({
           className="btn"
           onClick={onFormat}
           disabled={!query.trim()}
-          title={!query.trim() ? "Enter a query to format" : "Format query"}
         >
           Format
         </button>

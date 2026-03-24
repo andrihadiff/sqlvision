@@ -9,7 +9,9 @@ import {
   updateRowByPk,
   updateRowByRowid,
   dropTable,
+  renameTable,
 } from "../logic/schema";
+import { Pencil, X } from "lucide-react";
 
 export default function TableEditModal({
   open,
@@ -17,35 +19,56 @@ export default function TableEditModal({
   tableName,
   onClose,
   onChanged,
+  onRenamed,
   onPersistWorkspace,
 }) {
+  const [currentTableName, setCurrentTableName] = useState("");
+  const [renameValue, setRenameValue] = useState("");
   const [cols, setCols] = useState([]);
   const [rowsData, setRowsData] = useState({ columns: [], rows: [] });
   const [values, setValues] = useState({});
   const [editRowIndex, setEditRowIndex] = useState(null);
   const [editValues, setEditValues] = useState({});
+  const [mode, setMode] = useState("view");
   const [msg, setMsg] = useState("");
 
   const pkName = useMemo(() => getPrimaryKeyColumn(cols), [cols]);
 
-  function refresh() {
-    if (!db || !tableName) return;
-    const c = getTableColumns(db, tableName);
+  function refresh(targetName = currentTableName) {
+    if (!db || !targetName) return;
+    const c = getTableColumns(db, targetName);
     setCols(c);
-    const r = getTableRows(db, tableName, 200);
+    const r = getTableRows(db, targetName, 200);
     setRowsData(r);
   }
 
   useEffect(() => {
     if (!open) return;
+    const nextName = String(tableName || "");
+    setCurrentTableName(nextName);
+    setRenameValue(nextName);
+    setMode("view");
     setMsg("");
     setValues({});
     setEditRowIndex(null);
     setEditValues({});
-    refresh();
+    refresh(nextName);
   }, [open, db, tableName]);
 
-  if (!open || !tableName) return null;
+  useEffect(() => {
+    if (!open) return undefined;
+    function onKeyDown(event) {
+      if (event.key === "Escape") {
+        onClose?.();
+      }
+    }
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [open, onClose]);
+
+  if (!open || !currentTableName) return null;
+
+  const isEditMode = mode === "edit";
 
   function setVal(name, v) {
     setValues((prev) => ({ ...prev, [name]: v }));
@@ -56,7 +79,9 @@ export default function TableEditModal({
   }
 
   async function persistChanges(successMessage, failureMessage) {
-    const ok = await onPersistWorkspace?.(successMessage, failureMessage);
+    const ok = await onPersistWorkspace?.(successMessage, failureMessage, {
+      silentSchemaStatus: true,
+    });
     if (ok === false) {
       setMsg(failureMessage);
       return false;
@@ -67,7 +92,7 @@ export default function TableEditModal({
 
   async function onInsert() {
     setMsg("");
-    const res = insertRow(db, tableName, cols, values);
+    const res = insertRow(db, currentTableName, cols, values);
     if (!res.ok) {
       setMsg(res.error || "Insert failed.");
       return;
@@ -85,11 +110,11 @@ export default function TableEditModal({
     if (pkName) {
       const idx = rowsData.columns.indexOf(pkName);
       const pkVal = idx >= 0 ? row[idx] : null;
-      res = deleteRowByPk(db, tableName, pkName, pkVal);
+      res = deleteRowByPk(db, currentTableName, pkName, pkVal);
     } else {
       const rowid =
         Array.isArray(rowsData.rowids) && rowIndex >= 0 ? rowsData.rowids[rowIndex] : undefined;
-      res = deleteRowByRowid(db, tableName, rowid);
+      res = deleteRowByRowid(db, currentTableName, rowid);
     }
 
     if (!res.ok) {
@@ -122,6 +147,47 @@ export default function TableEditModal({
     setMsg("");
   }
 
+  function onToggleMode() {
+    if (isEditMode) {
+      setEditRowIndex(null);
+      setEditValues({});
+      setMode("view");
+      return;
+    }
+    setRenameValue(currentTableName);
+    setMode("edit");
+  }
+
+  async function onSaveRename() {
+    const nextName = String(renameValue || "").trim();
+    if (!nextName) {
+      setMsg("Table name cannot be empty.");
+      return;
+    }
+
+    const res = renameTable(db, currentTableName, nextName);
+    if (!res.ok) {
+      setMsg(res.error || "Rename failed.");
+      return;
+    }
+
+    if (res.unchanged) {
+      setRenameValue(nextName);
+      return;
+    }
+
+    const previousName = currentTableName;
+    setCurrentTableName(nextName);
+    setRenameValue(nextName);
+    setEditRowIndex(null);
+    setEditValues({});
+    setValues({});
+    refresh(nextName);
+    onChanged?.();
+    onRenamed?.(previousName, nextName);
+    await persistChanges("Table renamed ✓", "Table renamed locally, but Mongo save failed ✗");
+  }
+
   async function onSaveEditRow(row, rowIndex) {
     setMsg("");
     let res;
@@ -129,11 +195,11 @@ export default function TableEditModal({
     if (pkName) {
       const idx = rowsData.columns.indexOf(pkName);
       const pkVal = idx >= 0 ? row[idx] : null;
-      res = updateRowByPk(db, tableName, cols, pkName, pkVal, editValues);
+      res = updateRowByPk(db, currentTableName, cols, pkName, pkVal, editValues);
     } else {
       const rowid =
         Array.isArray(rowsData.rowids) && rowIndex >= 0 ? rowsData.rowids[rowIndex] : undefined;
-      res = updateRowByRowid(db, tableName, cols, rowid, editValues);
+      res = updateRowByRowid(db, currentTableName, cols, rowid, editValues);
     }
 
     if (!res.ok) {
@@ -150,7 +216,7 @@ export default function TableEditModal({
 
   async function onDeleteTable() {
     setMsg("");
-    const res = dropTable(db, tableName);
+    const res = dropTable(db, currentTableName);
     if (!res.ok) {
       setMsg(res.error || "Delete table failed.");
       return;
@@ -159,7 +225,8 @@ export default function TableEditModal({
     onChanged?.();
     const ok = await onPersistWorkspace?.(
       "Table deleted ✓",
-      "Table deleted locally, but Mongo save failed ✗"
+      "Table deleted locally, but Mongo save failed ✗",
+      { silentSchemaStatus: true }
     );
     if (ok === false) {
       onClose?.();
@@ -171,164 +238,189 @@ export default function TableEditModal({
 
   const canDeleteRow = Boolean(pkName || (Array.isArray(rowsData.rowids) && rowsData.rowids.length));
   const canEditRow = canDeleteRow;
+  const normalizedRename = String(renameValue || "").trim();
+  const canSaveRename = Boolean(
+    isEditMode && normalizedRename && normalizedRename.toLowerCase() !== currentTableName.toLowerCase()
+  );
 
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" onClick={(e) => e.stopPropagation()} style={{ maxWidth: 860 }}>
-        <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
-          <h3 style={{ margin: 0 }}>{tableName}</h3>
-          <div style={{ display: "flex", gap: 10 }}>
-            <button className="btn ghost" onClick={onClose}>
-              Close
+      <div className="modal table-modal" onClick={(e) => e.stopPropagation()}>
+        <div className="table-modal-header">
+          <button type="button" className="modal-close-icon" onClick={onClose} aria-label="Close modal">
+            <X size={18} />
+          </button>
+
+          <div className="table-modal-header-row">
+            {isEditMode ? (
+              <div className="table-title-edit-row">
+                <div className="table-title-edit-wrap">
+                  <Pencil size={14} className="table-title-icon" />
+                  <input
+                    className="table-title-input"
+                    value={renameValue}
+                    onChange={(e) => setRenameValue(e.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter") {
+                        event.preventDefault();
+                        onSaveRename();
+                      }
+                    }}
+                    placeholder="Table name"
+                    aria-label="Table name"
+                  />
+                </div>
+                <button className="btn" onClick={onSaveRename} disabled={!canSaveRename}>
+                  Save Name
+                </button>
+              </div>
+            ) : (
+              <h3 className="table-title-view">{currentTableName}</h3>
+            )}
+          </div>
+
+          <div className="hint table-modal-meta">
+            Primary key: {pkName ? pkName : "None (using rowid fallback for row actions)"}
+          </div>
+        </div>
+
+        <div className="table-modal-body">
+          <div className="table-modal-action-row">
+            <button type="button" className="btn" onClick={onToggleMode}>
+              {isEditMode ? "View" : "Edit"}
             </button>
           </div>
-        </div>
 
-        <div className="hint" style={{ marginTop: 8 }}>
-          Primary key: {pkName ? pkName : "None (using rowid fallback for row actions)"}
-        </div>
+          <div style={{ marginTop: 18 }}>
+            <div className="hint" style={{ marginBottom: 6 }}>
+              Rows (first 200)
+            </div>
 
-        <div style={{ marginTop: 14 }}>
-          <div className="hint" style={{ marginBottom: 6 }}>
-            Insert row
-          </div>
+            <div className="results-wrap">
+              <table className="results-table">
+                <thead>
+                  <tr>
+                    {rowsData.columns.map((c) => (
+                      <th key={c}>{c}</th>
+                    ))}
+                    {isEditMode ? <th>Actions</th> : null}
+                  </tr>
+                </thead>
+                <tbody>
+                  {rowsData.rows?.length ? (
+                    rowsData.rows.map((r, i) => (
+                      <tr key={i}>
+                        {r.map((v, j) => {
+                          const columnName = rowsData.columns[j];
+                          const isEditing = isEditMode && editRowIndex === i;
+                          const isPkColumn = Boolean(pkName && columnName === pkName);
+                          if (!isEditing) {
+                            return <td key={j}>{v === null || v === undefined ? "" : String(v)}</td>;
+                          }
 
-          <div className="results-wrap">
-            <table className="results-table">
-              <thead>
-                <tr>
-                  {cols.map((c) => (
-                    <th key={c.name}>
-                      {c.name} <span style={{ opacity: 0.6, fontWeight: 500 }}>{c.type}</span>
-                    </th>
-                  ))}
-                </tr>
-              </thead>
-              <tbody>
-                <tr>
-                  {cols.map((c) => (
-                    <td key={c.name}>
-                      <input
-                        className="builder-input"
-                        value={values[c.name] ?? ""}
-                        onChange={(e) => setVal(c.name, e.target.value)}
-                        placeholder={c.pk ? "PK" : ""}
-                      />
-                    </td>
-                  ))}
-                </tr>
-              </tbody>
-            </table>
-          </div>
-
-          <div style={{ display: "flex", justifyContent: "flex-end", gap: 10, marginTop: 10 }}>
-            <button className="btn primary" onClick={onInsert}>
-              Insert
-            </button>
-          </div>
-        </div>
-
-        <div style={{ marginTop: 18 }}>
-          <div className="hint" style={{ marginBottom: 6 }}>
-            Rows (first 200)
-          </div>
-
-          <div className="results-wrap">
-            <table className="results-table">
-              <thead>
-                <tr>
-                  {rowsData.columns.map((c) => (
-                    <th key={c}>{c}</th>
-                  ))}
-                  <th>Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {rowsData.rows?.length ? (
-                  rowsData.rows.map((r, i) => (
-                    <tr key={i}>
-                      {r.map((v, j) => {
-                        const columnName = rowsData.columns[j];
-                        const isEditing = editRowIndex === i;
-                        const isPkColumn = Boolean(pkName && columnName === pkName);
-                        if (!isEditing) {
-                          return <td key={j}>{v === null || v === undefined ? "" : String(v)}</td>;
-                        }
-
-                        return (
-                          <td key={j}>
-                            <input
-                              className="builder-input"
-                              value={editValues[columnName] ?? ""}
-                              onChange={(e) => setEditVal(columnName, e.target.value)}
-                              readOnly={isPkColumn}
-                              disabled={isPkColumn}
-                            />
+                          return (
+                            <td key={j}>
+                              <input
+                                className="builder-input"
+                                value={editValues[columnName] ?? ""}
+                                onChange={(e) => setEditVal(columnName, e.target.value)}
+                                readOnly={isPkColumn}
+                                disabled={isPkColumn}
+                              />
+                            </td>
+                          );
+                        })}
+                        {isEditMode ? (
+                          <td>
+                            {editRowIndex === i ? (
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button className="btn" onClick={() => onSaveEditRow(r, i)}>
+                                  Save
+                                </button>
+                                <button className="btn ghost" onClick={onCancelEditRow}>
+                                  Cancel
+                                </button>
+                              </div>
+                            ) : (
+                              <div style={{ display: "flex", gap: 8 }}>
+                                <button
+                                  className="btn ghost"
+                                  onClick={() => onStartEditRow(r, i)}
+                                  disabled={!canEditRow || editRowIndex !== null}
+                                >
+                                  Edit
+                                </button>
+                                <button
+                                  className="btn ghost"
+                                  onClick={() => onDeleteRow(r, i)}
+                                  disabled={!canDeleteRow || editRowIndex !== null}
+                                >
+                                  Delete
+                                </button>
+                              </div>
+                            )}
                           </td>
-                        );
-                      })}
-                      <td>
-                        {editRowIndex === i ? (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button className="btn" onClick={() => onSaveEditRow(r, i)}>
-                              Save
-                            </button>
-                            <button className="btn ghost" onClick={onCancelEditRow}>
-                              Cancel
-                            </button>
-                          </div>
-                        ) : (
-                          <div style={{ display: "flex", gap: 8 }}>
-                            <button
-                              className="btn ghost"
-                              onClick={() => onStartEditRow(r, i)}
-                              disabled={!canEditRow || editRowIndex !== null}
-                              title={
-                                !canEditRow
-                                  ? "Edit not available for this table"
-                                  : editRowIndex !== null
-                                  ? "Finish current row edit first"
-                                  : "Edit row"
-                              }
-                            >
-                              Edit
-                            </button>
-                            <button
-                              className="btn ghost"
-                              onClick={() => onDeleteRow(r, i)}
-                              disabled={!canDeleteRow || editRowIndex !== null}
-                              title={
-                                !canDeleteRow
-                                  ? "Delete not available for this table"
-                                  : editRowIndex !== null
-                                  ? "Finish current row edit first"
-                                  : "Delete row"
-                              }
-                            >
-                              Delete
-                            </button>
-                          </div>
-                        )}
+                        ) : null}
+                      </tr>
+                    ))
+                  ) : (
+                    <tr>
+                      <td
+                        colSpan={Math.max(1, rowsData.columns.length + (isEditMode ? 1 : 0))}
+                        style={{ opacity: 0.75 }}
+                      >
+                        No rows.
                       </td>
                     </tr>
-                  ))
-                ) : (
-                  <tr>
-                    <td colSpan={rowsData.columns.length + 1} style={{ opacity: 0.75 }}>
-                      No rows.
-                    </td>
-                  </tr>
-                )}
-              </tbody>
-            </table>
+                  )}
+                </tbody>
+              </table>
+            </div>
           </div>
-        </div>
 
-        <div style={{ display: "flex", justifyContent: "space-between", gap: 10, marginTop: 18 }}>
-          <button className="btn ghost" onClick={onDeleteTable}>
-            Delete Table
-          </button>
-          {msg ? <div className="hint" style={{ alignSelf: "center" }}>{msg}</div> : <div />}
+          {isEditMode ? (
+            <div className="table-modal-footer">
+              <div className="table-modal-footer-divider" />
+
+              <div className="table-modal-insert-block">
+                <div className="hint table-insert-title">Insert Row</div>
+
+                <div className="table-insert-scroll">
+                  <div className="table-insert-grid">
+                    {cols.map((c) => (
+                      <label key={c.name} className="table-insert-field">
+                        <span className="table-insert-label">
+                          {c.name}
+                          <span className="table-insert-type">{c.type}</span>
+                        </span>
+                        <input
+                          className="builder-input"
+                          value={values[c.name] ?? ""}
+                          onChange={(e) => setVal(c.name, e.target.value)}
+                          placeholder={c.pk ? "PK" : ""}
+                        />
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="table-modal-footer-bottom">
+                <button className="btn ghost" onClick={onDeleteTable}>
+                  Delete Table
+                </button>
+                <div className="table-modal-footer-right-actions">
+                  <button className="btn primary" onClick={onInsert}>
+                    Insert
+                  </button>
+                </div>
+              </div>
+
+              {msg ? <div className="hint table-modal-footer-message">{msg}</div> : null}
+            </div>
+          ) : msg ? (
+            <div className="hint" style={{ marginTop: 12 }}>{msg}</div>
+          ) : null}
         </div>
       </div>
     </div>
