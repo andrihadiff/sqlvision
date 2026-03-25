@@ -1,37 +1,23 @@
 stages:
-  - build
   - deploy
 
 default:
   image: node:20
 
-build:
-  stage: build
+pages:
+  stage: deploy
   script:
     - cd app
     - npm ci || npm install
     - npm run build
-  artifacts:
-    paths:
-      - app/dist/
-    expire_in: 1 year
-  only:
-    - main
-
-pages:
-  stage: deploy
-  needs:
-    - job: build
-      artifacts: true
-  script:
-    - ls
-    - ls app || true
-    - ls app/dist || true
+    - cd ..
+    - ls server/public
     - rm -rf public
     - mkdir -p public
-    - cp -r app/dist/. public/
+    - cp -r server/public/. public/
   artifacts:
     paths:
       - public
+    expire_in: 1 year
   only:
     - main
