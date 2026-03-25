@@ -13,17 +13,23 @@ build:
     - npm run build
   artifacts:
     paths:
-      - app/dist
+      - app/dist/
     expire_in: 1 year
   only:
     - main
 
 pages:
   stage: deploy
+  needs:
+    - job: build
+      artifacts: true
   script:
+    - ls
+    - ls app || true
+    - ls app/dist || true
     - rm -rf public
     - mkdir -p public
-    - cp -r app/dist/* public/
+    - cp -r app/dist/. public/
   artifacts:
     paths:
       - public
