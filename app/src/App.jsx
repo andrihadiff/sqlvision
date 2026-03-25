@@ -9,7 +9,12 @@ import QueryPanel from "./components/querypanel";
 import OutputPanel from "./components/outputpanel";
 
 import { formatSql } from "./logic/formatsql";
-import { createWorkspaceDb, run } from "./logic/db";
+import {
+  createWorkspaceDb,
+  run,
+  seedStarterDemoWorkspace,
+  STARTER_DEMO_QUERY,
+} from "./logic/db";
 import { replaceDbContents, snapshotDb, snapshotToSql } from "./logic/schema";
 import { apiDelete, apiGet, apiPost } from "./logic/api";
 import { generateQueryBreakdown } from "./logic/stepper";
@@ -18,6 +23,7 @@ const CLIENT_ID_KEY = "sqlvision:client_id";
 const SHARE_QUERY_PARAM = "share";
 const CHALLENGE_QUERY_PARAM = "challenge";
 const CHALLENGE_BACKUP_KEY = "sqlvision:challenge_backup";
+const WORKSPACE_QUERY_KEY_PREFIX = "sqlvision:workspace_query:";
 
 function getClientId() {
   try {
@@ -38,6 +44,32 @@ function getUrlParam(name) {
     return new URLSearchParams(globalThis.location?.search || "").get(name) || "";
   } catch {
     return "";
+  }
+}
+
+function getWorkspaceQueryStorageKey(clientId) {
+  return `${WORKSPACE_QUERY_KEY_PREFIX}${String(clientId || "").trim()}`;
+}
+
+function loadWorkspaceQuery(clientId) {
+  const key = getWorkspaceQueryStorageKey(clientId);
+  if (!key.trim()) return "";
+
+  try {
+    return String(localStorage.getItem(key) || "");
+  } catch {
+    return "";
+  }
+}
+
+function saveWorkspaceQuery(clientId, queryText) {
+  const key = getWorkspaceQueryStorageKey(clientId);
+  if (!key.trim()) return;
+
+  try {
+    localStorage.setItem(key, String(queryText || ""));
+  } catch {
+    // Ignore storage failures.
   }
 }
 
@@ -144,7 +176,12 @@ export default function App() {
   const [db, setDb] = useState(null);
   const [runStatus, setRunStatus] = useState("");
   const [tab, setTab] = useState("results");
-  const [query, setQuery] = useState("");
+  const [query, setQuery] = useState(() => {
+    if (getUrlParam(SHARE_QUERY_PARAM) || getUrlParam(CHALLENGE_QUERY_PARAM)) {
+      return "";
+    }
+    return loadWorkspaceQuery(getClientId());
+  });
   const [workspaceTables, setWorkspaceTables] = useState([]);
   const [schemaStatus, setSchemaStatus] = useState("");
   const [challengeStatus, setChallengeStatus] = useState("");
@@ -155,6 +192,8 @@ export default function App() {
   const [showHelp, setShowHelp] = useState(false);
   const [dbStatus, setDbStatus] = useState("loading");
   const [workspaceLoaded, setWorkspaceLoaded] = useState(false);
+  const [shouldSeedStarterDemo, setShouldSeedStarterDemo] = useState(false);
+  const [workspaceRestoreVersion, setWorkspaceRestoreVersion] = useState(0);
   const [userChallenges, setUserChallenges] = useState([]);
   const [activeChallenge, setActiveChallenge] = useState(null);
   const [isSharedChallengeMode, setIsSharedChallengeMode] = useState(() =>
@@ -181,6 +220,7 @@ export default function App() {
 
           setWorkspaceTables(Array.isArray(data?.tables) ? data.tables : []);
           setQuery(String(data?.query || ""));
+          setShouldSeedStarterDemo(false);
           setWorkspaceLoaded(true);
           return;
         }
@@ -188,11 +228,14 @@ export default function App() {
         const data = await apiGet(`/tables?clientId=${encodeURIComponent(clientId)}`);
         if (!alive) return;
 
-        setWorkspaceTables(Array.isArray(data) ? data : []);
+        const nextTables = Array.isArray(data) ? data : [];
+        setWorkspaceTables(nextTables);
+        setShouldSeedStarterDemo(nextTables.length === 0);
         setWorkspaceLoaded(true);
       } catch (e) {
         if (!alive) return;
         setWorkspaceTables([]);
+        setShouldSeedStarterDemo(false);
         setWorkspaceLoaded(true);
         setError(e?.message || "Failed to load workspace tables.");
       }
@@ -246,6 +289,43 @@ export default function App() {
       alive = false;
     };
   }, [clientId, challengeKey]);
+
+  useEffect(() => {
+    if (!shouldSeedStarterDemo) return;
+    if (!db || !workspaceLoaded) return;
+    if (!restoredDbsRef.current.has(db)) return;
+
+    let alive = true;
+    setShouldSeedStarterDemo(false);
+    setRunStatus("Loading starter demo...");
+
+    (async () => {
+      const seeded = seedStarterDemoWorkspace(db);
+      if (!seeded.ok) {
+        if (!alive) return;
+        setError(seeded.error || "Failed to load starter demo data.");
+        setRunStatus("");
+        return;
+      }
+
+      setQuery((current) => (String(current || "").trim() ? current : STARTER_DEMO_QUERY));
+
+      const synced = await syncWorkspace(db);
+      if (!alive) return;
+
+      if (!synced.ok) {
+        setWorkspaceTables(snapshotDb(db));
+        setError(synced.error || "Starter demo loaded locally, but workspace save failed.");
+        setSchemaStatus("Starter demo loaded locally, but Mongo save failed ✗");
+      }
+
+      setRunStatus("");
+    })();
+
+    return () => {
+      alive = false;
+    };
+  }, [shouldSeedStarterDemo, db, workspaceLoaded, workspaceRestoreVersion]);
 
   useEffect(() => {
     if (!challengeKey || !isSharedChallengeMode) return;
@@ -316,11 +396,20 @@ export default function App() {
     }
 
     restoredDbsRef.current.add(db);
+    setWorkspaceRestoreVersion((current) => current + 1);
   }, [db, workspaceLoaded, workspaceTables]);
 
   useEffect(() => {
     autoLoadedChallengeKeyRef.current = "";
   }, [challengeKey]);
+
+  useEffect(() => {
+    if (!clientId) return;
+    if (shareKey) return;
+    if (isSharedChallengeMode) return;
+
+    saveWorkspaceQuery(clientId, query);
+  }, [clientId, shareKey, isSharedChallengeMode, query]);
 
   function captureWorkspaceBackup() {
     const canSnapshotDb = db && restoredDbsRef.current.has(db);
